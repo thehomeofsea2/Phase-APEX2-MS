@@ -1,58 +1,58 @@
-# 1. 解压
+# 1. Unpacking
 
-文件包解压即用，不要改变目录结构，将需要分析的数据整理为以下格式:
+Extract the archive and keep the directory structure unchanged. Organize the data you want to analyze using the following format:
 
-| Genes(列名固定)      | Sample1(列名可以不固定) | Sample2(列名可以不固定) | …… |
-| -------------------- | ----------------------- | ----------------------- | ---- |
-| Official_ProteinName |                         |                         |      |
-| Official_ProteinName |                         |                         |      |
+| Genes (column name fixed) | Sample1 (column name may vary) | Sample2 (column name may vary) | … |
+| ------------------------ | ------------------------------ | ------------------------------ | --- |
+| Official_ProteinName     |                                |                                |     |
+| Official_ProteinName     |                                |                                |     |
 
-放进Rawdata文件夹中
+Place the formatted file(s) inside the `Rawdata/` folder.
 
-# 2. 主流程
-按照guide.md说明，在R(R 4.3.3)中运行main_pipeline.R
+# 2. Main workflow
+Follow the instructions in `guide.md` and run `main_pipeline.R` in R (tested with R 4.3.3).
 
-分析思路为：
-1. 配置环境
-2. 读取数据
-3. 使用Human Protein Atlas (HPA)数据库和MitoCarta3.0数据库完成基本蛋白质定位注释。TP集合使用对应的无膜细胞器的数据集注释。
-4. 数据标准化(不标准化，全局标准化，局部标准化三种情况)
-    全局标准化：催化组与对照组等全部样本一起完成中位数标准化或Quantile标准化。必须至少完成全局quantile标准化。
-    局部标准化：每个分组内(biogroup)，所有技术/生物学重复组内进行标准化，实现样品的中位数或分位数对齐，以减少后面第一次ROC分析扣除非催化组背景时出现的假阴性问题。使用此参数需要严格控制，Steptavidin-pull down实验时所有样品（催化组和对照组）的上样量和实验操作流程要尽量一致。
-5. 缺失值填补（只对非催化组进行缺失值补充，按照Perseus方法根据单个样品内的数据分布模拟一个随机较低值补充，用于支持Limma包在第一次组间背景扣除时计算组间差异FC/FDR值）
+The analysis flow is:
+1. Configure the environment
+2. Load the data
+3. Annotate protein localization using the Human Protein Atlas (HPA) and MitoCarta 3.0 databases, assigning TP sets with the corresponding acellular organelle datasets.
+4. Normalize the data (three modes: no normalization, global normalization, local normalization)
+   - **Global normalization**: all samples from catalytic and control groups undergo median or quantile normalization together. At least global quantile normalization must be completed.
+   - **Local normalization**: within each `bioGroup`, normalize every technical/biological replicate set to align medians or quantiles, which helps avoid false negatives when subtracting the background from the first ROC analysis. Use this option cautiously—during Streptavidin pull-down experiments the loading amount and workflow for all samples (both catalytic and control) must be as consistent as possible.
+5. Impute missing values (only for the non-catalytic group). Missing values are filled via Perseus-style simulation: for each sample a random low value is drawn from the sample-specific distribution to support Limma in calculating FC/FDR during the first background subtraction.
 
-**1. Perseus参数计算**
-对每个数据列（样本）计算：
+**1. Perseus parameter calculation**
+For each column (sample) compute:
 - `imputation_mean = col_mean - 1.8 * col_sd`
 - `imputation_sd = 0.3 * col_sd`
 
-**2. NoCat组填补规则**（必填）
-根据`sampleGroup$CatalyticGroup == "NoCat"`识别：
-- **n_valid == 2**：用bioGroup内两个有效值的平均值填补
-- **n_valid < 2**：用Perseus参数随机抽样填补
-  - 从正态分布`N(imputation_mean, imputation_sd)`中抽样
-  - 保证结果可重复（使用random_seed）
+**2. NoCat group imputation rules** (mandatory)
+Based on `sampleGroup$CatalyticGroup == "NoCat"`:
+- **n_valid == 2**: impute with the mean of the two valid values within the same `bioGroup`
+- **n_valid < 2**: draw a sample from `N(imputation_mean, imputation_sd)`
+  - sampling is deterministic using the provided `random_seed`
 
-**3. Cat组填补规则**（可选）
-根据`sampleGroup$CatalyticGroup == "Cat"`识别：
-- **默认（impute_cat_mean=FALSE）**：不填补，保留NA
-- **启用（impute_cat_mean=TRUE）**：
-  - n_valid == 2：用bioGroup内平均值填补
-  - n_valid < 2：不填补，保留NA
-  
-6. 相关性热图+注释蛋白定位的聚类热图，观察评估数据质量
-7. 第一次差异分析（催化vs非催化）。使用Limma包完成组间比较，给出组间比较的FC和FDR值并汇总到表达矩阵中。
-8. 扣除背景的第一次ROC分析。使用pROC包完成ROC分析，根据指定的TP/FP注释，无监督寻找最适用于分隔背景蛋白的FC(催化vs非催化)阈值。输出每种比较的最适阈值和ROC分析图表。
-9. 正式的第一次背景扣除，使用上述ROC分析中给出的最佳阈值，在每个biogroup中去除低于阈值的蛋白，且默认去除组内（生物学重复）有效值小于2的蛋白。此处有A/B两种方案，A可以指定对特定的组间比较不使用FDR过滤只使用最适FC，用于解决一些数据集中高背景的问题。B方案默认对所有组间比较实用FDR和最适FC过滤。
-10. 从步骤9中获得每个biogroup的新蛋白列表，再合并为新的数据矩阵。只保留数据矩阵中的蛋白列表和NA结构，所有非0值替换为全局quantile标准化的对应值 (只有全局标准化的数据才能支持催化组之间的横向比较，如不同邻近标记反应数据集；选择替换而不是重新标准化是为了避免蛋白数量差异大时产生的系统偏差)
-11. 第二次差异分析。使用步骤10产生的新数据矩阵(已经过滤了背景且替换为全局标准化后的数据)，用Limma包计算组间差异(催化组vsSpatial control)，给出LogFC和FDR值。
-12. 第二次ROC分析(指定TP和FP完成ROC分析，看与spatial control相比组分差异和最适分隔阈值；此步骤只用于观察数据质量不进入后续计算)
-13. 新创建或替换MultiBait_Localization注释列，在SG注释中加入SG_subset注释，以判断SG_ref中的潜在系统偏差；或加入Nucleolus_subset注释列。合并数据集输出ForStep16对象由于后续模块计算。
-14. 火山图绘制（不用于后续计算）
+**3. Cat group imputation rules** (optional)
+Based on `sampleGroup$CatalyticGroup == "Cat"`:
+- **Default (`impute_cat_mean = FALSE`)**: leave `NA`
+- **If `impute_cat_mean = TRUE`**:
+  - `n_valid == 2`: impute with the group mean
+  - `n_valid < 2`: keep as `NA`
 
+6. Generate correlation and clustering heatmaps (annotated with localization data) to assess data quality
+7. First differential analysis (catalytic vs. non-catalytic) with the Limma package, outputting FC and FDR added into the expression matrix
+8. First ROC analysis for background subtraction using the `pROC` package. Given the specified TP/FP annotation, find the FC threshold that best separates background proteins (catalytic vs. non-catalytic) in an unsupervised manner and export the optimal thresholds plus ROC plots per comparison.
+9. Apply the first explicit background subtraction: remove proteins with values below the optimal thresholds (from step 8) within each `bioGroup`, and by default drop proteins with fewer than 2 valid values per biological replicate. There are two strategies (A/B):
+   - Strategy A allows overriding FDR usage for specific group comparisons (only the optimal FC is used)
+   - Strategy B applies both FDR and optimal FC filtering to all comparisons
+10. Build a new protein list from step 9 (per `bioGroup`) and merge it into a new data matrix. Keep only the protein list and the `NA` structure; replace every non-zero value with the globally quantile-normalized counterpart (only globally normalized data supports cross-catalytic comparison; replacing instead of renormalizing avoids biases caused by large protein count differences).
+11. Second differential analysis using the cleaned, globally normalized matrix (from step 10). Run Limma to compare catalytic groups vs. Spatial control and report LogFC/FDR.
+12. Second ROC analysis (observe how the catalytic groups compare to spatial control and log the optimal separating threshold; this step is for diagnostics only and does not feed into later calculations)
+13. Create or refresh the `MultiBait_Localization` annotation column, add `SG_subset` annotations to assess potential biases in `SG_ref`, or add `Nucleolus_subset`. Merge datasets and export the `ForStep16` object needed by later modules.
+14. Draw volcano plots (informational only).
 
-# 3. 1D/2D模型构建与PPI分析
-使用main_pipeline.R输出的模块14.RData作为251117_BaseModels_Concise.R的输入，运行251117_BaseModels_Concise.R脚本。脚本中为模版，需要根据使用情况更改各种接口。脚本依赖从Module14.RData中继承的ForStep19列表，不要改动此名称，进入Step29 多模型复杂需求分析部分时需要ForStep19对象.
+# 3. 1D/2D modeling and PPI analysis
+Use the `Module14.RData` output from `main_pipeline.R` as input to `251117_BaseModels_Concise.R`. The script is a template—adapt the interfaces based on your data. It depends on the `ForStep19` list saved inside `Module14.RData`; do not rename it, because Step 29 (multi-model analysis) expects `ForStep19`.
 
-# 4. 模型性能比较
-使用main_pipeline.R输出的模块14.RData作为251117 ModelComparision.R的输入，同样需要改接口，但是保留最后的ForStep19对象。
+# 4. Model performance comparison
+Also use the `Module14.RData` output as input to `251117 ModelComparision.R`. Update any script interfaces as needed, but keep the final `ForStep19` object unchanged.
