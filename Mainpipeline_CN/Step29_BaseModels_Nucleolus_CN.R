@@ -17,83 +17,43 @@ library(colourpicker)
 library(RColorBrewer)
 
 #2. 工作目录和数据加载 ####
-setwd("D:/Phase_APEX2/Raw_ForFigures/BioMap")
+setwd("D:/Bioinfomatics/MS/CodeNorm_Nuc_Batch1")
 #source("../202501017 3DAUC models base.R")
 ##替换为任意一个能够完成主流程至FC/Scatter plot的环境中
-load("D:/Phase_APEX2/Raw_ForFigures/BioMap/ToStep21_all_data.RData") 
+load("D:/Bioinfomatics/MS/CodeNorm_Nuc_Batch1/Module14_workspace.RData") 
 
-
-names(ForStep21)
-
-names(ForStep21$noMBR_QNorm_New)
-
-#修改ForStep21列表中两个数据框的列名
-##为第2-16列在末尾数字前添加LFQ_前缀
-# 创建列名修改函数
-renameColumnsWithLFQ <- function(df) {
-  # 获取当前列名
-  col_names <- colnames(df)
-  # 对第2-16列进行重命名
-  for (i in 2:16) {
-    if (i <= length(col_names)) {
-      # 使用正则表达式在末尾数字前插入LFQ_
-      col_names[i] <- gsub("([a-zA-Z_]+)([0-9]+)$", "\\1LFQ_\\2", col_names[i])
-    }
-  }
-  colnames(df) <- col_names
-  return(df)
-}
-
-# 应用函数到ForStep21的所有数据框
-#for (i in seq_along(ForStep21)) {
-#  ForStep21[[i]] <- renameColumnsWithLFQ(ForStep21[[i]])
-#}
-
-str(ForStep21)
+str(ForStep16)
+names(ForStep16)
 
 ## 分组结构
 group_info <- list(
-  CD3EAP = list(
-    samples = c("CD3EAP_LFQ_1", "CD3EAP_LFQ_2"),
-    logFC  = "CD3EAP_vs_NLS_logFC",
-    logFC_FDR="CD3EAP_vs_NLS_adj.P.Val"
+  E7A2B4 = list(
+    samples = c("E7A2B4_Light_LFQ_1", "E7A2B4_Light_LFQ_2", "E7A2B4_Light_LFQ_3"),
+    logFC  = "E7A2B4_vs_K19_logFC",
+    logFC_FDR="E7A2B4_vs_K19_adj.P.Val"
   ),
-  NOP56 = list(
-    samples = c("NOP56_LFQ_1", "NOP56_LFQ_2"),
-    logFC  = "NOP56_vs_NLS_logFC",
-    logFC_FDR="NOP56_vs_NLS_adj.P.Val"
+  E7C2 = list(
+    samples = c("E7C2_Light_LFQ_1", "E7C2_Light_LFQ_2", "E7C2_Light_LFQ_3"),
+    logFC  = "E7C2_vs_K19_logFC",
+    logFC_FDR="E7C2_vs_K19_adj.P.Val"
   ),
-  NPM1 = list(
-    samples = c("NPM1_LFQ_1", "NPM1_LFQ_2"),
-    logFC  = "NPM1_vs_NLS_logFC",
-    logFC_FDR="NPM1_vs_NLS_adj.P.Val"
-  ),
-  POLR1E = list(
-    samples = c("POLR1E_LFQ_1", "POLR1E_LFQ_2"),
-    logFC  = "POLR1E_vs_NLS_logFC",
-    logFC_FDR="POLR1E_vs_NLS_adj.P.Val"
-  ),
-  ZNF330 = list(
-    samples = c("ZNF330_LFQ_1", "ZNF330_LFQ_2"),
-    logFC  = "ZNF330_vs_NLS_logFC",
-    logFC_FDR="ZNF330_vs_NLS_adj.P.Val"
+  C2 = list(
+    samples = c("C2_H2O2_LFQ_1", "C2_H2O2_LFQ_2", "C2_H2O2_LFQ_3"),
+    logFC  = "C2_vs_J37_logFC",
+    logFC_FDR="C2_vs_J37_adj.P.Val"
   )
 )
 
-ForStep21=ForStep21[c("noMBR_QNorm_New")]
-
-str(ForStep21)
-
-for (i in seq_along(ForStep21)) {
-  ForStep21[[i]]=ForStep21[[i]] %>% mutate(MultiBait_Localization=Sub_HPA_Localization)
+for (i in seq_along(ForStep16)) {
+  ForStep16[[i]]=ForStep16[[i]] %>% mutate(MultiBait_Localization=Sub_HPA_Localization)
 }
 
-str(ForStep21)
+str(ForStep16)
 
-unique(ForStep21$noMBR_QNorm_New$Sub_HPA_Localization)
+unique(ForStep16[[1]]$MultiBait_Localization)
 myTP_vector=c("Nucleolus","Other&Nucleolus","Nuclear&Nucleolus","Nuclear&Cytosol&Nucleolus","Cytosol&Nucleolus")
-myTP_vector %in% unique(ForStep21$noMBR_QNorm_New$Sub_HPA_Localization)
-ForStep19=ForStep21
+myTP_vector %in% unique(ForStep16[[1]]$MultiBait_Localization)
+ForStep19=ForStep16
 
 # 定义myTP_vector2用于Fig9 TPR曲线 - 包含所有含"TP"的类别
 myTP_vector2 <- unique(ForStep19[[1]]$MultiBait_Localization)[
@@ -103,13 +63,15 @@ cat("myTP_vector2 (用于TPR计算):", paste(myTP_vector2, collapse = ", "), "\n
 myTP_vector2==myTP_vector
 str(ForStep19)
 
-
-
 # 空间对照组接口：以列名匹配规则和输出名称配置每个对照组
 spatial_control_groups <- list(
-  NLS_Con = list(
-    pattern = "NLS_LFQ",          # 列名匹配模式（regex），用于寻找对应的LFQ列
-    display_name = "Probe_Con"    # 图表与输出中的名称
+  J37 = list(
+    pattern = "J37_H2O2_LFQ",          # 列名匹配模式（regex），用于寻找对应的LFQ列
+    display_name = "J37 (H2O2-NLS)"    # 图表与输出中的名称
+  ),
+  K19 = list(
+    pattern = "K19_Light_LFQ",
+    display_name = "K19 (Light-NLS)"
   )
 )
 
@@ -149,6 +111,16 @@ MULTIBAIT_SG_CATEGORIES <- c(
   "Other&Nucleolus",
   "Cytosol&Nucleolus"
 )
+
+#定量列非NA数量阈值接口
+#    - PARAM_MIN_LFQ_NONNA: Phase3 主流程与 MultiBait 版本在进入 process_replicates() 前，
+#      要求相应实验组的 LFQ 列至少有多少个非 NA 值（默认 1 个即可保留）。
+#    - PARAM_MIN_LFQ_NONNA_TPR: Fig9 TPR 曲线的候选排序专用阈值，用于控制 TP/FP 计算前
+#      的最少非 NA 数量（默认 2 个，保证曲线基于稳定重复）。
+PARAM_MIN_LFQ_NONNA <- 2
+PARAM_MIN_LFQ_NONNA_TPR <- 2
+
+
 
 #Step29 多模型复杂需求 （Gemini版本）#####
 
@@ -2764,14 +2736,6 @@ PARAM_LOCALIZATION_COLORS <- c(
   # "Mitochondrion"="grey89", "Nuclear"="grey89", "Nuclear_Cytosol"="grey89",
   # "Cytosol"="grey89"
 )
-
-# 6. 定量列非NA数量阈值接口
-#    - PARAM_MIN_LFQ_NONNA: Phase3 主流程与 MultiBait 版本在进入 process_replicates() 前，
-#      要求相应实验组的 LFQ 列至少有多少个非 NA 值（默认 1 个即可保留）。
-#    - PARAM_MIN_LFQ_NONNA_TPR: Fig9 TPR 曲线的候选排序专用阈值，用于控制 TP/FP 计算前
-#      的最少非 NA 数量（默认 2 个，保证曲线基于稳定重复）。
-PARAM_MIN_LFQ_NONNA <- 1
-PARAM_MIN_LFQ_NONNA_TPR <- 2
 
 # ===================================================================
 #

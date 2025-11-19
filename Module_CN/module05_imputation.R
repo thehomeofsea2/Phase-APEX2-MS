@@ -1,33 +1,33 @@
-# Module 05: Missing Value Imputation
-# Function: Impute missing values in standardized data (mainly for NoCat groups)
-# Author: CodeNorm Pipeline
-# Date: 2024
+# Module 05: 缺失值填补
+# 功能：对标准化后的数据进行缺失值填补（主要针对NoCat组）
+# 作者：CodeNorm Pipeline
+# 日期：2024
 
-#' Module 05: Missing Value Imputation
+#' Module 05: 缺失值填补
 #' 
 #' @description
-#' Impute missing values in standardized data using Perseus method
-#' Mainly targets groups with CatalyticGroup as NoCat, Cat groups can optionally be imputed
+#' 对标准化后的数据进行缺失值填补，使用Perseus方法
+#' 主要针对CatalyticGroup为NoCat的组，Cat组可选择是否填补
 #' 
-#' @param dir_config Directory configuration list (from Module 1)
-#' @param standardized_data_list Standardized data list (from Module 4)
-#' @param sampleGroup Sample grouping information (from Module 2)
-#' @param impute_cat_mean Whether to impute Cat groups with n_valid=2 using mean (default FALSE)
-#' @param random_seed Random seed for reproducibility (default 123)
+#' @param dir_config 目录配置列表（来自Module 1）
+#' @param standardized_data_list 标准化数据列表（来自Module 4）
+#' @param sampleGroup 样本分组信息（来自Module 2）
+#' @param impute_cat_mean 是否对Cat组的n_valid=2情况用平均值填补（默认FALSE）
+#' @param random_seed 随机数种子，用于保证结果可重复（默认123）
 #' 
-#' @return List containing:
-#'   - imputed_data_list: List containing all imputed versions
-#'   - imputation_params: Imputation parameter information
+#' @return 列表，包含：
+#'   - imputed_data_list: 包含所有填补后版本的列表
+#'   - imputation_params: 填补参数信息
 #' 
 #' @details
-#' Imputation strategy:
-#' 1. Perseus parameter calculation: imputation_mean = col_mean - 1.8 * col_sd
-#'                                   imputation_sd = 0.3 * col_sd
-#' 2. NoCat group imputation rules:
-#'    - n_valid == 2: Impute with group mean
-#'    - n_valid < 2: Impute with random sampling using Perseus parameters
-#' 3. Cat groups: Not imputed by default, user can choose to impute with mean when n_valid==2
-#' 4. Output comparison boxplot before and after imputation
+#' 填补策略：
+#' 1. Perseus参数计算：imputation_mean = col_mean - 1.8 * col_sd
+#'                     imputation_sd = 0.3 * col_sd
+#' 2. NoCat组填补规则：
+#'    - n_valid == 2: 用组内平均值填补
+#'    - n_valid < 2: 用Perseus参数随机抽样填补
+#' 3. Cat组：默认不填补，用户可选择n_valid==2时用平均值填补
+#' 4. 输出填补前后对比boxplot
 #' 
 #' @export
 module05_imputation <- function(dir_config, 
@@ -36,50 +36,50 @@ module05_imputation <- function(dir_config,
                                 impute_cat_mean = FALSE,
                                 random_seed = 123) {
   
-  # 0. Load required packages ####
+  # 0. 加载必需包 ####
   require(tidyverse)
   require(dplyr)
   require(tidyr)
   
   cat("\n" , rep("=", 60), "\n", sep = "")
-  cat("Module 05: Missing Value Imputation\n")
+  cat("Module 05: 缺失值填补\n")
   cat(rep("=", 60), "\n\n", sep = "")
   
-  # 1. Input validation ####
-  cat("\n[1] Validating input data...\n")
+  # 1. 输入验证 ####
+  cat("\n[1] 验证输入数据...\n")
   
   if (!all(c("reference", "output") %in% names(dir_config))) {
-    stop("❌ dir_config must contain reference and output paths")
+    stop("❌ dir_config必须包含reference和output路径")
   }
   
   if (!is.list(standardized_data_list) || length(standardized_data_list) == 0) {
-    stop("❌ standardized_data_list must be a non-empty list")
+    stop("❌ standardized_data_list必须是非空列表")
   }
   
   required_cols <- c("FinalName", "bioGroup", "CatalyticGroup")
   if (!all(required_cols %in% names(sampleGroup))) {
-    stop("❌ sampleGroup must contain: ", paste(required_cols, collapse = ", "))
+    stop("❌ sampleGroup必须包含：", paste(required_cols, collapse = ", "))
   }
   
-  cat("✓ Input validation passed\n")
-  cat(sprintf("  - Datasets to process: %d\n", length(standardized_data_list)))
-  cat(sprintf("  - Cat group imputation strategy: %s\n", ifelse(impute_cat_mean, "Impute when n_valid=2", "No imputation")))
-  cat(sprintf("  - Random seed: %d\n", random_seed))
+  cat("✓ 输入验证通过\n")
+  cat(sprintf("  - 待处理数据集: %d 个\n", length(standardized_data_list)))
+  cat(sprintf("  - Cat组填补策略: %s\n", ifelse(impute_cat_mean, "n_valid=2时填补", "不填补")))
+  cat(sprintf("  - 随机数种子: %d\n", random_seed))
   
-  # 2. Prepare grouping information ####
-  cat("\n[2] Preparing grouping information...\n")
+  # 2. 准备分组信息 ####
+  cat("\n[2] 准备分组信息...\n")
   
-  # Identify data columns and annotation columns from the first dataset
+  # 从第一个数据集中识别数据列和注释列
   first_data <- standardized_data_list[[1]]
   data_cols <- sampleGroup$FinalName
   anno_cols <- setdiff(names(first_data), c("Gene", data_cols))
   
-  cat(sprintf("✓ Identified %d data columns\n", length(data_cols)))
-  cat(sprintf("✓ Identified %d annotation columns: %s\n", 
+  cat(sprintf("✓ 识别到 %d 个数据列\n", length(data_cols)))
+  cat(sprintf("✓ 识别到 %d 个注释列: %s\n", 
               length(anno_cols), 
               paste(anno_cols, collapse = ", ")))
   
-  # Identify NoCat and Cat groups
+  # 识别NoCat和Cat组
   cat_groups <- sampleGroup %>%
     filter(CatalyticGroup == "Cat") %>%
     pull(bioGroup) %>%
@@ -90,20 +90,20 @@ module05_imputation <- function(dir_config,
     pull(bioGroup) %>%
     unique()
   
-  cat(sprintf("✓ Cat groups (%d): %s\n", 
+  cat(sprintf("✓ Cat组 (%d个): %s\n", 
               length(cat_groups), 
               paste(cat_groups, collapse = ", ")))
-  cat(sprintf("✓ NoCat groups (%d): %s\n", 
+  cat(sprintf("✓ NoCat组 (%d个): %s\n", 
               length(nocat_groups), 
               paste(nocat_groups, collapse = ", ")))
   
-  # 3. Define imputation function ####
+  # 3. 定义填补函数 ####
   impute_missing_values <- function(data, data_name, nocat_groups, impute_cat) {
     
-    cat(sprintf("\n  Processing: %s\n", data_name))
+    cat(sprintf("\n  处理: %s\n", data_name))
     
-    # Calculate imputation parameters for each column (Perseus method)
-    cat("    - Calculating Perseus imputation parameters...\n")
+    # 计算每列的填补参数（Perseus方法）
+    cat("    - 计算Perseus填补参数...\n")
     
     perseus_params <- data %>%
       select(all_of(data_cols)) %>%
@@ -120,13 +120,13 @@ module05_imputation <- function(dir_config,
         imputation_sd = 0.3 * col_sd
       )
     
-    # Match bioGroup for each sample
+    # 为每个样本匹配bioGroup
     sample_to_group <- setNames(sampleGroup$bioGroup, sampleGroup$FinalName)
     
-    # Execute imputation
-    cat("    - Executing missing value imputation...\n")
+    # 执行填补
+    cat("    - 执行缺失值填补...\n")
     
-    # Set random seed for reproducibility
+    # 设置随机种子保证可重复性
     set.seed(random_seed)
     
     data_imputed <- data %>%
@@ -147,12 +147,12 @@ module05_imputation <- function(dir_config,
       rowwise() %>%
       mutate(
         intensity_imputed = case_when(
-          # NoCat groups: n_valid=2 use mean, <2 use Perseus
+          # NoCat组：n_valid=2用平均值，<2用Perseus
           group %in% nocat_groups & n_valid == 2 & is.na(intensity) ~ mean_valid_within_group,
           group %in% nocat_groups & n_valid < 2 & is.na(intensity) ~ rnorm(1, mean = imputation_mean, sd = imputation_sd),
-          # Cat groups: according to user choice
+          # Cat组：根据用户选择
           impute_cat & !(group %in% nocat_groups) & n_valid == 2 & is.na(intensity) ~ mean_valid_within_group,
-          # Other cases keep original value
+          # 其他情况保持原值
           TRUE ~ intensity
         )
       ) %>%
@@ -165,15 +165,15 @@ module05_imputation <- function(dir_config,
       ) %>%
       select(Gene, all_of(data_cols), all_of(anno_cols))
     
-    # Statistics on imputation
+    # 统计填补情况
     n_imputed <- sum(is.na(data[, data_cols])) - sum(is.na(data_imputed[, data_cols]))
-    cat(sprintf("    ✓ Imputed %d missing values\n", n_imputed))
+    cat(sprintf("    ✓ 填补了 %d 个缺失值\n", n_imputed))
     
     return(data_imputed)
   }
   
-  # 4. Execute imputation for all datasets ####
-  cat("\n[3] Executing missing value imputation...\n")
+  # 4. 对所有数据集执行填补 ####
+  cat("\n[3] 执行缺失值填补...\n")
   
   imputed_data_list <- list()
   
@@ -181,25 +181,25 @@ module05_imputation <- function(dir_config,
     data_name <- names(standardized_data_list)[i]
     data <- standardized_data_list[[i]]
     
-    # Execute imputation
+    # 执行填补
     data_imputed <- impute_missing_values(data, data_name, nocat_groups, impute_cat_mean)
     
-    # Save to list
+    # 保存到列表
     imputed_name <- paste0(data_name, "_Imputed")
     imputed_data_list[[imputed_name]] <- data_imputed
     
-    # Save CSV
+    # 保存CSV
     csv_file <- file.path(dir_config$output, paste0("Module05_", imputed_name, ".csv"))
     write.csv(data_imputed, csv_file, row.names = FALSE)
-    cat(sprintf("    ✓ Saved: %s\n", basename(csv_file)))
+    cat(sprintf("    ✓ 已保存: %s\n", basename(csv_file)))
   }
   
-  cat(sprintf("\n✓ Processed %d datasets in total\n", length(imputed_data_list)))
+  cat(sprintf("\n✓ 共处理 %d 个数据集\n", length(imputed_data_list)))
   
-  # 5. Generate comparison boxplot ####
-  cat("\n[4] Generating comparison boxplot before and after imputation...\n")
+  # 5. 生成对比boxplot ####
+  cat("\n[4] 生成填补前后对比boxplot...\n")
   
-  # Assign colors to different bioGroups (consistent with Module 4)
+  # 为不同bioGroup分配颜色（与Module 4一致）
   sample_to_group <- setNames(sampleGroup$bioGroup, sampleGroup$FinalName)
   col_groups <- sample_to_group[data_cols]
   unique_groups <- unique(col_groups)
@@ -224,10 +224,10 @@ module05_imputation <- function(dir_config,
     original_data <- standardized_data_list[[i]]
     imputed_data <- imputed_data_list[[i]]
     
-    # Set dual plot layout
+    # 设置双图布局
     par(mfrow = c(1, 2))
     
-    # Before imputation
+    # 填补前
     boxplot(original_data[, data_cols], 
             log = "y", 
             cex.axis = 0.4, 
@@ -236,7 +236,7 @@ module05_imputation <- function(dir_config,
             col = box_colors,
             border = "black")
     
-    # After imputation
+    # 填补后
     boxplot(imputed_data[, data_cols], 
             log = "y", 
             cex.axis = 0.4, 
@@ -249,10 +249,10 @@ module05_imputation <- function(dir_config,
   }
   
   dev.off()
-  cat(sprintf("✓ Saved: %s\n", basename(pdf_file)))
+  cat(sprintf("✓ 已保存: %s\n", basename(pdf_file)))
   
-  # 6. Validate annotation column integrity ####
-  cat("\n[5] Validating annotation column integrity...\n")
+  # 6. 验证注释列完整性 ####
+  cat("\n[5] 验证注释列完整性...\n")
   
   for (i in seq_along(imputed_data_list)) {
     original_data <- standardized_data_list[[i]]
@@ -260,16 +260,16 @@ module05_imputation <- function(dir_config,
     
     for (anno_col in anno_cols) {
       if (!all(original_data[[anno_col]] == imputed_data[[anno_col]], na.rm = TRUE)) {
-        warning(sprintf("⚠ Column %s in %s may have changed", 
-                       anno_col, names(imputed_data_list)[i]))
+        warning(sprintf("⚠ %s的%s列可能有变化", 
+                       names(imputed_data_list)[i], anno_col))
       }
     }
   }
   
-  cat("✓ Annotation column integrity validation passed\n")
+  cat("✓ 注释列完整性验证通过\n")
   
-  # 7. Generate imputation parameter summary ####
-  cat("\n[6] Generating imputation parameter summary...\n")
+  # 7. 生成填补参数摘要 ####
+  cat("\n[6] 生成填补参数摘要...\n")
   
   imputation_params <- list(
     nocat_groups = nocat_groups,
@@ -280,11 +280,11 @@ module05_imputation <- function(dir_config,
     anno_cols = anno_cols
   )
   
-  # 8. Return results ####
+  # 8. 返回结果 ####
   cat("\n" , rep("=", 60), "\n", sep = "")
-  cat("Module 05 completed\n")
+  cat("Module 05 完成\n")
   cat(rep("=", 60), "\n", sep = "")
-  cat("\nGenerated datasets:\n")
+  cat("\n生成的数据集：\n")
   for (name in names(imputed_data_list)) {
     cat(sprintf("  - %s\n", name))
   }

@@ -110,32 +110,59 @@ cat("========================================\n")
 
 source(file.path(dir_config$module, "module03_annotation.R"))
 
-# 配置TP注释列（所有注释列需手动配置）
-custom_annotations <- list(
-  list(
-    column_name = "HaloMap_Localization",
-    TP_source = "HaloMap_SGs",
-    TP_column = "Known.SG.Reference",
-    TP_label = "SGs"
-  ),
-  list(
-    column_name = "GO_Localization",
-    TP_source = "GO_SGs",
-    TP_column = "Gene",
-    TP_label = "SGs"
-  ),
-  list(
-    column_name = "MultiBait_Localization",
-    TP_source = "HaloMap_DifMethods",
-    TP_column = "Multi.Bait.APEX.Marmor.Kollet.et..al.2020",
-    TP_label = "SGs"
-  )
+# 选择注释模式：
+#   - "SG": 使用HaloMap/GO/MultiBait SGs预设
+#   - "Nucleolus": 使用HPA Nucleolus + CLL核仁参考
+annotation_mode <- "SG"
+
+# 高级：如需自定义TP注释列，可在此提供列表（设置后将忽略annotation_mode）
+custom_annotations_override <- NULL
+# 示例：
+# custom_annotations_override <- list(
+#   list(
+#     column_name = "Custom_Localization",
+#     TP_source = "GO_SGs",
+#     TP_column = "Gene",
+#     TP_label = "SGs"
+#   )
+# )
+
+# 可选：在选择SG/Nucleolus后追加额外注释列（不会覆盖原有配置）
+additional_annotations <- list()
+# 示例：
+# additional_annotations <- list(
+#   list(
+#     column_name = "MyTurbo_Localization",
+#     TP_source = "MyTurboSet",
+#     TP_column = "Gene",
+#     TP_label = "TurboTP"
+#   )
+# )
+
+# 可选：声明自定义TP参考文件（可放在Reference目录或提供绝对路径）
+custom_tp_sources <- list()
+# 示例：
+# custom_tp_sources <- list(
+#   list(
+#     source_name = "MyNucleolusSet",
+#     file = "MyNucleolus.csv",   # 默认相对Reference目录
+#     file_type = "csv",          # 可省略，自动根据扩展名判断
+#     gene_column = "Gene"        # 文件中基因列名称
+#   )
+# )
+
+result <- module03_annotation(
+  dir_config,
+  data_raw,
+  sampleGroup,
+  custom_annotations = custom_annotations_override,
+  annotation_mode = annotation_mode,
+  custom_tp_sources = custom_tp_sources,
+  additional_annotations = additional_annotations
 )
 
-result <- module03_annotation(dir_config, data_raw, sampleGroup, custom_annotations)
-
-# 如果只需要基础注释（Cytosol/Nuclear/Mitochondrion），不需要TP注释：
-# result <- module03_annotation(dir_config, data_raw, sampleGroup, custom_annotations = NULL)
+# 如果只需要基础注释（Cytosol/Nuclear/Mitochondrion），将custom_annotations_override保持为NULL，
+# 并在module03_annotation内部选择"SG"/"Nucleolus"模式即可
 
 # 将返回的数据赋值给全局变量
 data_annotated <- result$data_annotated
@@ -160,7 +187,7 @@ source(file.path(dir_config$module, "module04_standardization.R"))
 # 配置标准化类型
 # 可选值："noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm"
 # 注意：必须至少包含一个全局标准化（Global_QNorm或Global_MNorm）
-norm_types <- c("Global_QNorm", "Local_QNorm")
+norm_types <- c("noNorm","Global_QNorm", "Local_QNorm")
 
 result <- module04_standardization(dir_config, data_annotated, sampleGroup, norm_types)
 
@@ -220,7 +247,7 @@ source(file.path(dir_config$module, "module06_heatmap.R"))
 # localization_columns: 用于分类的注释列（NULL表示自动检测）
 # color_params: 热图颜色参数（用于AllLocalization和by_localization）
 
-selected_versions <- c("Global_QNorm_Imputed", "Local_QNorm_Imputed")  # 支持多个版本
+selected_versions <- c("noNorm_Imputed","Global_QNorm_Imputed", "Local_QNorm_Imputed")  # 支持多个版本
 #selected_versions <- c("Global_QNorm_Imputed", "Local_QNorm_Imputed")  # 支持多个版本
 ## 可选值："noNorm_Imputed", "Global_QNorm_Imputed", "Global_MNorm_Imputed", "Local_QNorm_Imputed", "Local_MNorm _Imputed"
 heatmap_types <- c("all", "correlation")
@@ -538,7 +565,6 @@ names(FDR_combined_df_list_2nd) # 查看可选版本
 #   例如 c("noNorm_New_A","Local_QNorm_New_A","noNorm_New_B","Local_QNorm_New_B")
 #   设为 NULL 表示自动包含所有版本
 second_roc_versions <- c(
-  "noNorm_New_A",
   "Local_QNorm_New_A"
 )
 second_roc_annotation_column <- "GO_Localization"
@@ -556,12 +582,14 @@ result <- module12_second_roc(
   dir_config = dir_config,
   FDR_combined_df_list_2nd = FDR_combined_df_list_2nd,
   expr_data_list = expr_data_list_2nd,
+  comparisons_list = if (exists("comparisons_list_2nd")) comparisons_list_2nd else NULL,
   annotation_column = second_roc_annotation_column,
   tp_label = second_roc_tp_label,
   fp_label = second_roc_fp_label,
   desired_order = if (length(second_roc_order) > 0) second_roc_order else names(FDR_combined_df_list_2nd),
   min_tp = second_roc_min_tp,
-  sample_columns = if (exists("sample_info_2nd")) sample_info_2nd$SampleName else NULL
+  sample_columns = if (exists("sample_info_2nd")) sample_info_2nd$SampleName else NULL,
+  youden_ylim = c(0, 0.8)
 )
 
 FDR_combined_df_list_2nd <- result$FDR_combined_df_list_2nd
@@ -575,16 +603,18 @@ cat("  包含：Module01-11所有数据 + second ROC结果\n")
 cat("✓ Module 12 完成\n")
 
 # ============================================================================
-# Module 13: SubSG注释
+# Module 13: Sub注释（SG / Nucleolus）
 # ============================================================================
 cat("\n========================================\n")
-cat("Module 13: SubSG注释\n")
+cat("Module 13: Sub注释\n")
 cat("========================================\n")
 
 source(file.path(dir_config$module, "module13_subsg_annotation.R"))
 
-# 配置 SubSG 注释目标列与 ForStep16 版本（NULL 表示全部）
-subsg_target_column <- "MultiBait_Localization"
+# 配置 Sub注释模式与列（subSG 默认写入MultiBait，subNucleolus写入Sub_HPA）
+subsg_mode <- "subSG"  # 可选："subSG" 或 "subNucleolus"
+subsg_target_column <- if (subsg_mode == "subNucleolus") "Sub_HPA_Localization" else "MultiBait_Localization"
+subsg_levels_order <- NULL  # 使用默认顺序，如需自定义可赋值为字符向量
 names(Expr_FDR_df_list_2nd)
 subsg_forstep16_versions <- c(
   "Local_QNorm_New_A"
@@ -594,7 +624,9 @@ result <- module13_subsg_annotation(
   dir_config = dir_config,
   expr_fdr_df_list_2nd = Expr_FDR_df_list_2nd,
   annotation_references = annotation_references,
+  mode = subsg_mode,
   target_column = subsg_target_column,
+  levels_order = subsg_levels_order,
   forstep16_versions = subsg_forstep16_versions
 )
 
@@ -665,6 +697,8 @@ volcano_label_size <- 3
 volcano_label_max_overlaps <- 15
 # 可选：c("Exp_vs_Exp","Exp_vs_Spatial")，或单独选择某一类，NULL=全部
 volcano_comparison_categories <- c("Exp_vs_Spatial")
+volcano_xlim_override <- c(-3, 6)
+volcano_ylim_override <- c(0, 15)
 # 自定义示例（如需替换默认值）：
 # volcano_comparison_sets <- list(
 #   list(
@@ -680,7 +714,7 @@ volcano_comparison_categories <- c("Exp_vs_Spatial")
 #     fdr_cols = c("K69C3_vs_K20_adj.P.Val")
 #   )
 # )
-volcano_comparison_sets <- module14_default_comparison_sets()
+volcano_comparison_sets <- module14_default_comparison_sets(module14_comparison_metadata)
 
 module14_versions <- if (is.null(volcano_versions)) NULL else volcano_versions
 
@@ -700,6 +734,8 @@ volcano_result <- module14_volcano_plots(
   label_size = volcano_label_size,
   label_max_overlaps = volcano_label_max_overlaps,
   comparison_sets = volcano_comparison_sets,
+  xlim_override = volcano_xlim_override,
+  ylim_override = volcano_ylim_override,
   comparison_metadata = module14_comparison_metadata,
   comparison_categories = volcano_comparison_categories
 )
@@ -715,5 +751,38 @@ cat("\n========================================\n")
 cat("所有模块执行完成！\n")
 cat("========================================\n")
 load("Module14_workspace.RData")
-str(ForStep16)
+forstep16_r_object <- file.path(dir_config$output, "Module14_ForStep16.rds")
+saveRDS(ForStep16, forstep16_r_object)
+cat(sprintf("✓ 已导出 ForStep16 R对象: %s\n", forstep16_r_object))
+
+forstep16_excel <- file.path(dir_config$output, "Module14_ForStep16.xlsx")
+if (!requireNamespace("openxlsx", quietly = TRUE)) {
+  warning("⚠ 提示：缺少 openxlsx 包，无法导出 ForStep16 Excel，请先安装 openxlsx")
+} else {
+  wb_forstep16 <- openxlsx::createWorkbook()
+  existing_names <- character()
+  for (sheet_name in names(ForStep16)) {
+    df <- ForStep16[[sheet_name]]
+    if (!is.data.frame(df)) {
+      df <- as.data.frame(df)
+    }
+    sanitized <- gsub("[^A-Za-z0-9]+", "_", sheet_name)
+    if (nchar(sanitized) == 0) sanitized <- "Sheet"
+    base_name <- substr(sanitized, 1, 31)
+    unique_name <- base_name
+    suffix <- 1
+    while (unique_name %in% existing_names) {
+      suffix_label <- paste0("_", suffix)
+      max_base_len <- max(31 - nchar(suffix_label), 1)
+      unique_name <- paste0(substr(base_name, 1, max_base_len), suffix_label)
+      suffix <- suffix + 1
+    }
+    existing_names <- c(existing_names, unique_name)
+    openxlsx::addWorksheet(wb_forstep16, unique_name)
+    openxlsx::writeData(wb_forstep16, unique_name, df)
+  }
+  openxlsx::saveWorkbook(wb_forstep16, forstep16_excel, overwrite = TRUE)
+  cat(sprintf("✓ 已导出 ForStep16 多sheet Excel: %s\n", forstep16_excel))
+}
 # 接下来可以运行Base_model.R 脚本来构建1D/2D过滤模型以及输出Final蛋白列表
+

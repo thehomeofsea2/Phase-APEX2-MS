@@ -1,30 +1,30 @@
-# Module 04: Data Standardization
-# Function: Log2 transformation, global normalization (QNorm/MNorm), local normalization (Local QNorm/MNorm)
-# Author: CodeNorm Pipeline
-# Date: 2024
+# Module 04: 数据标准化
+# 功能：Log2转化、全局标准化（QNorm/MNorm）、局部标准化（Local QNorm/MNorm）
+# 作者：CodeNorm Pipeline
+# 日期：2024
 
-#' Module 04: Data Standardization
+#' Module 04: 数据标准化
 #' 
 #' @description
-#' Perform Log2 transformation and multiple normalization methods, including global and local normalization
+#' 对数据进行Log2转化和多种标准化处理，包括全局标准化和局部标准化
 #' 
-#' @param dir_config Directory configuration list (from Module 1)
-#' @param data_annotated Annotated data frame (from Module 3)
-#' @param sampleGroup Sample grouping information (from Module 2)
-#' @param norm_types Character vector specifying normalization types needed
-#'   Valid values: "noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm"
-#'   Default: c("noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm")
-#'   Note: Must include at least one global normalization method (Global_QNorm or Global_MNorm)
+#' @param dir_config 目录配置列表（来自Module 1）
+#' @param data_annotated 带注释的数据框（来自Module 3）
+#' @param sampleGroup 样本分组信息（来自Module 2）
+#' @param norm_types 字符向量，指定需要的标准化类型
+#'   可选值："noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm"
+#'   默认：c("noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm")
+#'   注意：必须至少包含一个全局标准化（Global_QNorm或Global_MNorm）
 #' 
-#' @return List containing:
-#'   - standardized_data_list: List containing all normalized versions
-#'   - norm_types_used: Actually used normalization types
+#' @return 列表，包含：
+#'   - standardized_data_list: 包含所有标准化版本的列表
+#'   - norm_types_used: 实际使用的标准化类型
 #' 
 #' @details
-#' - Log2 transformation: Apply log2 conversion to numeric columns
-#' - Global normalization: Normalize all samples uniformly
-#' - Local normalization: Normalize separately within each bioGroup, then merge
-#' - Output boxplots to visualize effects of different normalization methods
+#' - Log2转化：对数值列进行log2转换
+#' - Global标准化：对所有样本统一标准化
+#' - Local标准化：在同一bioGroup内分别标准化，然后合并
+#' - 输出boxplot展示不同标准化方法的效果
 #' 
 #' @export
 module04_standardization <- function(dir_config, 
@@ -33,119 +33,119 @@ module04_standardization <- function(dir_config,
                                      norm_types = c("noNorm", "Global_QNorm", "Global_MNorm", 
                                                    "Local_QNorm", "Local_MNorm")) {
   
-  cat("\n=== Module 04: Data Standardization ===\n")
+  cat("\n=== Module 04: 数据标准化 ===\n")
   
-  # 1. Input validation ####
-  cat("\n[1] Validating input data...\n")
+  # 1. 输入验证 ####
+  cat("\n[1] 验证输入数据...\n")
   
   if (!all(c("reference", "output") %in% names(dir_config))) {
-    stop("❌ dir_config must contain reference and output paths")
+    stop("❌ dir_config必须包含reference和output路径")
   }
   
   if (!is.data.frame(data_annotated)) {
-    stop("❌ data_annotated must be a data frame")
+    stop("❌ data_annotated必须是数据框")
   }
   
   if (!"Gene" %in% colnames(data_annotated)) {
-    stop("❌ data_annotated must contain Gene column")
+    stop("❌ data_annotated必须包含Gene列")
   }
   
   if (!is.data.frame(sampleGroup)) {
-    stop("❌ sampleGroup must be a data frame")
+    stop("❌ sampleGroup必须是数据框")
   }
   
   if (!"bioGroup" %in% colnames(sampleGroup)) {
-    stop("❌ sampleGroup must contain bioGroup column")
+    stop("❌ sampleGroup必须包含bioGroup列")
   }
   
-  # Validate norm_types
+  # 验证norm_types
   valid_types <- c("noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm")
   if (!all(norm_types %in% valid_types)) {
-    stop("❌ norm_types contains invalid values. Valid values are: ", paste(valid_types, collapse = ", "))
+    stop("❌ norm_types包含无效值，有效值为：", paste(valid_types, collapse = ", "))
   }
   
-  # Check if at least one global normalization is included
+  # 检查是否至少有一个全局标准化
   if (!any(c("Global_QNorm", "Global_MNorm") %in% norm_types)) {
-    stop("❌ Must include at least one global normalization method (Global_QNorm or Global_MNorm)")
+    stop("❌ 必须至少包含一个全局标准化方法（Global_QNorm或Global_MNorm）")
   }
   
-  cat("✓ Input validation passed\n")
-  cat(sprintf("  - Data dimensions: %d rows × %d columns\n", nrow(data_annotated), ncol(data_annotated)))
-  cat(sprintf("  - Number of samples: %d\n", nrow(sampleGroup)))
-  cat(sprintf("  - Normalization types: %s\n", paste(norm_types, collapse = ", ")))
+  cat("✓ 输入验证通过\n")
+  cat(sprintf("  - 数据维度: %d行 × %d列\n", nrow(data_annotated), ncol(data_annotated)))
+  cat(sprintf("  - 样本数量: %d\n", nrow(sampleGroup)))
+  cat(sprintf("  - 标准化类型: %s\n", paste(norm_types, collapse = ", ")))
   
-  # 2. Identify data columns and annotation columns ####
-  cat("\n[2] Identifying data columns and annotation columns...\n")
+  # 2. 识别数据列和注释列 ####
+  cat("\n[2] 识别数据列和注释列...\n")
   
-  # Identify annotation columns (columns containing "Localization")
+  # 识别注释列（包含"Localization"的列）
   annotation_cols <- grep("Localization$", colnames(data_annotated), value = TRUE)
   
   if (length(annotation_cols) == 0) {
-    stop("❌ No annotation columns found (should contain 'Localization' suffix)")
+    stop("❌ 未找到注释列（应包含'Localization'后缀）")
   }
   
-  # Data columns: all columns except Gene column and annotation columns
+  # 数据列：除了Gene列和注释列之外的所有列
   data_cols <- setdiff(colnames(data_annotated), c("Gene", annotation_cols))
   
-  cat(sprintf("✓ Identification completed\n"))
-  cat(sprintf("  - Number of data columns: %d\n", length(data_cols)))
-  cat(sprintf("  - Number of annotation columns: %d (%s)\n", 
+  cat(sprintf("✓ 识别完成\n"))
+  cat(sprintf("  - 数据列数量: %d\n", length(data_cols)))
+  cat(sprintf("  - 注释列数量: %d (%s)\n", 
               length(annotation_cols), paste(annotation_cols, collapse = ", ")))
   
-  # 3. Log2 transformation ####
-  cat("\n[3] Performing Log2 transformation...\n")
+  # 3. Log2转化 ####
+  cat("\n[3] 执行Log2转化...\n")
   
   data_log2 <- data_annotated %>%
     mutate(across(all_of(data_cols), ~log2(.)))
   
-  cat("✓ Log2 transformation completed\n")
+  cat("✓ Log2转化完成\n")
   
-  # Save log2 data to CSV
+  # 保存log2数据到CSV
   csv_file <- file.path(dir_config$output, "Module04_log2.csv")
   write.csv(data_log2, csv_file, row.names = FALSE)
-  cat(sprintf("✓ Saved: %s\n", csv_file))
+  cat(sprintf("✓ 已保存: %s\n", csv_file))
   
-  # Assign colors for different bioGroups ####
-  # Build mapping from samples to bioGroup
+  # 为不同bioGroup分配颜色 ####
+  # 构建样本到bioGroup的映射
   sample_to_group <- setNames(sampleGroup$bioGroup, sampleGroup$FinalName)
   
-  # Verify if data columns are in sampleGroup
+  # 验证数据列是否在sampleGroup中
   valid_data_cols <- intersect(data_cols, names(sample_to_group))
   if (length(valid_data_cols) < length(data_cols)) {
     missing_cols <- setdiff(data_cols, valid_data_cols)
-    warning("⚠ The following data columns were not found in sampleGroup, will use grey: ", 
+    warning("⚠ 以下数据列未在sampleGroup中找到，将使用灰色：", 
             paste(missing_cols, collapse = ", "))
   }
   
-  # Assign bioGroup for each data column
+  # 为每个数据列分配bioGroup
   col_groups <- sample_to_group[valid_data_cols]
   unique_groups <- unique(col_groups)
   n_groups <- length(unique_groups)
   
-  cat(sprintf("  - Identified %d different bioGroups\n", n_groups))
+  cat(sprintf("  - 识别到 %d 个不同的bioGroup\n", n_groups))
   
-  # Generate color palette (using rainbow or other palettes)
+  # 生成颜色调色板（使用rainbow或其他调色板）
   if (n_groups <= 12) {
-    # Use Set3 palette (soft colors)
+    # 使用Set3调色板（柔和的颜色）
     group_colors <- scales::hue_pal()(n_groups)
   } else {
-    # Use rainbow palette
+    # 使用rainbow调色板
     group_colors <- rainbow(n_groups)
   }
   names(group_colors) <- unique_groups
   
-  # Assign colors for each data column
+  # 为每个数据列分配颜色
   box_colors <- character(length(data_cols))
   names(box_colors) <- data_cols
   for (col in data_cols) {
     if (col %in% names(col_groups)) {
       box_colors[col] <- group_colors[col_groups[col]]
     } else {
-      box_colors[col] <- "grey80"  # Use grey for columns not found
+      box_colors[col] <- "grey80"  # 未找到的列使用灰色
     }
   }
   
-  # Plot log2 boxplot (colored by bioGroup)
+  # 绘制log2 boxplot（按bioGroup着色）
   pdf_file <- file.path(dir_config$output, "Module04_log2_boxplot.pdf")
   pdf(pdf_file, width = 10, height = 5)
   boxplot(data_log2[, data_cols], 
@@ -154,39 +154,39 @@ module04_standardization <- function(dir_config,
           las = 2, 
           main = "Log2 Transformed Data",
           col = box_colors[data_cols])
-  # Add legend
+  # 添加图例
   legend("topright", 
          legend = names(group_colors), 
          fill = group_colors, 
          cex = 0.6,
          title = "bioGroup")
   dev.off()
-  cat(sprintf("✓ Saved: %s\n", pdf_file))
+  cat(sprintf("✓ 已保存: %s\n", pdf_file))
   
-  # 4. Initialize result list ####
+  # 4. 初始化结果列表 ####
   standardized_data_list <- list()
   
-  # noNorm: log2 transformed data
+  # noNorm: log2转化后的数据
   if ("noNorm" %in% norm_types) {
     standardized_data_list[["noNorm"]] <- data_log2
-    cat("✓ Added: noNorm (Log2 transformation only)\n")
+    cat("✓ 已添加: noNorm (仅Log2转化)\n")
   }
   
-  # 5. Global normalization ####
+  # 5. 全局标准化 ####
   if (any(c("Global_QNorm", "Global_MNorm") %in% norm_types)) {
-    cat("\n[4] Performing global normalization...\n")
+    cat("\n[4] 执行全局标准化...\n")
     
-    # Load preprocessCore package
+    # 加载preprocessCore包
     if (!require(preprocessCore, quietly = TRUE)) {
-      stop("❌ Need to install preprocessCore package: BiocManager::install('preprocessCore')")
+      stop("❌ 需要安装preprocessCore包：BiocManager::install('preprocessCore')")
     }
     
-    # Extract data matrix (for normalization)
+    # 提取数据矩阵（用于标准化）
     data_matrix <- as.matrix(data_log2[, data_cols])
     
     # 5.1 Global Quantile Normalization ####
     if ("Global_QNorm" %in% norm_types) {
-      cat("  Performing Global Quantile Normalization...\n")
+      cat("  执行Global Quantile Normalization...\n")
       
       normalized_matrix <- normalize.quantiles(data_matrix)
       colnames(normalized_matrix) <- data_cols
@@ -196,27 +196,27 @@ module04_standardization <- function(dir_config,
       
       standardized_data_list[["Global_QNorm"]] <- data_qnorm
       
-      # Save CSV
+      # 保存CSV
       csv_file <- file.path(dir_config$output, "Module04_Global_QNorm.csv")
       write.csv(data_qnorm, csv_file, row.names = FALSE)
-      cat(sprintf("  ✓ Global_QNorm completed, saved: %s\n", csv_file))
+      cat(sprintf("  ✓ Global_QNorm完成，已保存: %s\n", csv_file))
     }
     
     # 5.2 Global Median Normalization ####
     if ("Global_MNorm" %in% norm_types) {
-      cat("  Performing Global Median Normalization...\n")
+      cat("  执行Global Median Normalization...\n")
       
-      # Calculate median for each sample
+      # 计算每个样本的中位数
       sample_medians <- apply(data_matrix, 2, median, na.rm = TRUE)
-      cat(sprintf("    Sample median range: %.2f - %.2f\n", 
+      cat(sprintf("    样本中位数范围: %.2f - %.2f\n", 
                   min(sample_medians, na.rm = TRUE), 
                   max(sample_medians, na.rm = TRUE)))
       
-      # Calculate global median
+      # 计算全局中位数
       global_median <- median(sample_medians, na.rm = TRUE)
-      cat(sprintf("    Global median: %.2f\n", global_median))
+      cat(sprintf("    全局中位数: %.2f\n", global_median))
       
-      # Normalize
+      # 标准化
       normalized_matrix <- sweep(data_matrix, 2, sample_medians / global_median, "/")
       
       data_mnorm <- data_log2
@@ -224,13 +224,13 @@ module04_standardization <- function(dir_config,
       
       standardized_data_list[["Global_MNorm"]] <- data_mnorm
       
-      # Save CSV
+      # 保存CSV
       csv_file <- file.path(dir_config$output, "Module04_Global_MNorm.csv")
       write.csv(data_mnorm, csv_file, row.names = FALSE)
-      cat(sprintf("  ✓ Global_MNorm completed, saved: %s\n", csv_file))
+      cat(sprintf("  ✓ Global_MNorm完成，已保存: %s\n", csv_file))
     }
     
-    # Plot global normalization boxplot
+    # 绘制全局标准化boxplot
     pdf_file <- file.path(dir_config$output, "Module04_Global_Norm_boxplot.pdf")
     pdf(pdf_file, width = 10, height = 5)
     
@@ -242,7 +242,7 @@ module04_standardization <- function(dir_config,
                 las = 2, 
                 main = norm_name,
                 col = box_colors[data_cols])
-        # Add legend
+        # 添加图例
         legend("topright", 
                legend = names(group_colors), 
                fill = group_colors, 
@@ -252,119 +252,119 @@ module04_standardization <- function(dir_config,
     }
     
     dev.off()
-    cat(sprintf("✓ Saved: %s\n", pdf_file))
+    cat(sprintf("✓ 已保存: %s\n", pdf_file))
   }
   
-  # 6. Local normalization ####
+  # 6. 局部标准化 ####
   if (any(c("Local_QNorm", "Local_MNorm") %in% norm_types)) {
-    cat("\n[5] Performing local normalization (grouped by bioGroup)...\n")
+    cat("\n[5] 执行局部标准化（按bioGroup分组）...\n")
     
-    # Ensure preprocessCore is loaded
+    # 确保preprocessCore已加载
     if (!require(preprocessCore, quietly = TRUE)) {
-      stop("❌ Need to install preprocessCore package: BiocManager::install('preprocessCore')")
+      stop("❌ 需要安装preprocessCore包：BiocManager::install('preprocessCore')")
     }
     
-    # Build mapping from samples to bioGroup
-    # sampleGroup$FinalName corresponds to data_cols
+    # 构建样本到bioGroup的映射
+    # sampleGroup$FinalName对应data_cols
     sample_to_group <- setNames(sampleGroup$bioGroup, sampleGroup$FinalName)
     
-    # Verify all data columns have corresponding bioGroup
+    # 验证所有数据列都有对应的bioGroup
     missing_samples <- setdiff(data_cols, names(sample_to_group))
     if (length(missing_samples) > 0) {
-      warning("⚠ The following samples were not found in sampleGroup with corresponding bioGroup, will be skipped: ",
+      warning("⚠ 以下样本未在sampleGroup中找到对应的bioGroup，将被跳过：",
               paste(missing_samples, collapse = ", "))
       data_cols <- setdiff(data_cols, missing_samples)
     }
     
-    # Create group_vec
+    # 创建group_vec
     group_vec <- sample_to_group[data_cols]
     
-    cat(sprintf("  - Number of unique bioGroups: %d\n", length(unique(group_vec))))
-    cat(sprintf("  - bioGroup distribution:\n"))
+    cat(sprintf("  - 唯一bioGroup数量: %d\n", length(unique(group_vec))))
+    cat(sprintf("  - bioGroup分布:\n"))
     for (grp in unique(group_vec)) {
       n_samples <- sum(group_vec == grp)
-      cat(sprintf("    %s: %d samples\n", grp, n_samples))
+      cat(sprintf("    %s: %d个样本\n", grp, n_samples))
     }
     
-    # Extract data matrix
+    # 提取数据矩阵
     data_matrix <- as.matrix(data_log2[, data_cols])
     
     # 6.1 Local Median Normalization ####
     if ("Local_MNorm" %in% norm_types) {
-      cat("\n  Performing Local Median Normalization...\n")
+      cat("\n  执行Local Median Normalization...\n")
       
-      # Initialize normalization matrix
+      # 初始化标准化矩阵
       mnormalized_mat <- data_matrix
       
-      # Normalize separately for each bioGroup
+      # 对每个bioGroup分别标准化
       for (grp in unique(group_vec)) {
         grp_cols <- names(group_vec[group_vec == grp])
-        cat(sprintf("    Processing %s (%d samples)...\n", grp, length(grp_cols)))
+        cat(sprintf("    处理 %s (%d个样本)...\n", grp, length(grp_cols)))
         
-        # Extract sub-matrix for this group
+        # 提取该组的子矩阵
         sub_mat <- data_matrix[, grp_cols, drop = FALSE]
         
-        # Calculate median for each column
+        # 计算每列的中位数
         sample_medians <- apply(sub_mat, 2, median, na.rm = TRUE)
         
-        # Calculate global median for this group
+        # 计算该组的全局中位数
         group_global_median <- median(sample_medians, na.rm = TRUE)
         
-        # Normalize
+        # 标准化
         normalized_sub_mat <- sweep(sub_mat, 2, sample_medians / group_global_median, "/")
         
-        # Write back to result matrix
+        # 写回结果矩阵
         mnormalized_mat[, grp_cols] <- normalized_sub_mat
       }
       
-      # Build final data frame
+      # 构建最终数据框
       data_local_mnorm <- data_log2
       data_local_mnorm[, data_cols] <- as.data.frame(mnormalized_mat)
       
       standardized_data_list[["Local_MNorm"]] <- data_local_mnorm
       
-      # Save CSV
+      # 保存CSV
       csv_file <- file.path(dir_config$output, "Module04_Local_MNorm.csv")
       write.csv(data_local_mnorm, csv_file, row.names = FALSE)
-      cat(sprintf("  ✓ Local_MNorm completed, saved: %s\n", csv_file))
+      cat(sprintf("  ✓ Local_MNorm完成，已保存: %s\n", csv_file))
     }
     
     # 6.2 Local Quantile Normalization ####
     if ("Local_QNorm" %in% norm_types) {
-      cat("\n  Performing Local Quantile Normalization...\n")
+      cat("\n  执行Local Quantile Normalization...\n")
       
-      # Initialize normalization matrix
+      # 初始化标准化矩阵
       qnormalized_mat <- data_matrix
       
-      # Normalize separately for each bioGroup
+      # 对每个bioGroup分别标准化
       for (grp in unique(group_vec)) {
         grp_cols <- names(group_vec[group_vec == grp])
-        cat(sprintf("    Processing %s (%d samples)...\n", grp, length(grp_cols)))
+        cat(sprintf("    处理 %s (%d个样本)...\n", grp, length(grp_cols)))
         
-        # Extract sub-matrix
+        # 提取子矩阵
         sub_mat <- data_matrix[, grp_cols, drop = FALSE]
         
         # Quantile normalization
         normalized_sub_mat <- normalize.quantiles(as.matrix(sub_mat))
         colnames(normalized_sub_mat) <- grp_cols
         
-        # Write back to normalization matrix
+        # 写回标准化矩阵
         qnormalized_mat[, grp_cols] <- normalized_sub_mat
       }
       
-      # Build final data frame
+      # 构建最终数据框
       data_local_qnorm <- data_log2
       data_local_qnorm[, data_cols] <- as.data.frame(qnormalized_mat)
       
       standardized_data_list[["Local_QNorm"]] <- data_local_qnorm
       
-      # Save CSV
+      # 保存CSV
       csv_file <- file.path(dir_config$output, "Module04_Local_QNorm.csv")
       write.csv(data_local_qnorm, csv_file, row.names = FALSE)
-      cat(sprintf("  ✓ Local_QNorm completed, saved: %s\n", csv_file))
+      cat(sprintf("  ✓ Local_QNorm完成，已保存: %s\n", csv_file))
     }
     
-    # Plot local normalization boxplot
+    # 绘制局部标准化boxplot
     pdf_file <- file.path(dir_config$output, "Module04_Local_Norm_boxplot.pdf")
     pdf(pdf_file, width = 10, height = 5)
     
@@ -376,7 +376,7 @@ module04_standardization <- function(dir_config,
                 las = 2, 
                 main = norm_name,
                 col = box_colors[data_cols])
-        # Add legend
+        # 添加图例
         legend("topright", 
                legend = names(group_colors), 
                fill = group_colors, 
@@ -386,13 +386,13 @@ module04_standardization <- function(dir_config,
     }
     
     dev.off()
-    cat(sprintf("✓ Saved: %s\n", pdf_file))
+    cat(sprintf("✓ 已保存: %s\n", pdf_file))
   }
   
-  # 7. Comprehensive comparison boxplot ####
-  cat("\n[6] Generating comprehensive comparison boxplot...\n")
+  # 7. 综合对比boxplot ####
+  cat("\n[6] 生成综合对比boxplot...\n")
   
-  # Reorder according to user-specified order
+  # 按照用户指定的顺序重新排列
   standardized_data_list <- standardized_data_list[intersect(norm_types, names(standardized_data_list))]
   
   pdf_file <- file.path(dir_config$output, "Module04_All_Norm_comparison_boxplot.pdf")
@@ -405,7 +405,7 @@ module04_standardization <- function(dir_config,
             las = 2, 
             main = norm_name,
             col = box_colors[data_cols])
-    # Add legend
+    # 添加图例
     legend("topright", 
            legend = names(group_colors), 
            fill = group_colors, 
@@ -414,21 +414,21 @@ module04_standardization <- function(dir_config,
   }
   
   dev.off()
-  cat(sprintf("✓ Saved: %s\n", pdf_file))
+  cat(sprintf("✓ 已保存: %s\n", pdf_file))
   
-  # 8. Summary output ####
-  cat("\n=== Module 04 Completed ===\n")
-  cat(sprintf("✓ Generated %d normalization versions:\n", length(standardized_data_list)))
+  # 8. 总结输出 ####
+  cat("\n=== Module 04 完成 ===\n")
+  cat(sprintf("✓ 已生成 %d 种标准化版本:\n", length(standardized_data_list)))
   for (norm_name in names(standardized_data_list)) {
     cat(sprintf("  - %s\n", norm_name))
   }
   
-  cat("\nOutput files:\n")
-  cat(sprintf("  - CSV files: Output/Module04_*.csv (%d files)\n", 
+  cat("\n输出文件:\n")
+  cat(sprintf("  - CSV文件: Output/Module04_*.csv (%d个)\n", 
               length(standardized_data_list) + 1))  # +1 for log2
-  cat(sprintf("  - PDF files: Output/Module04_*_boxplot.pdf (4 files)\n"))
+  cat(sprintf("  - PDF文件: Output/Module04_*_boxplot.pdf (4个)\n"))
   
-  # Return results
+  # 返回结果
   return(list(
     standardized_data_list = standardized_data_list,
     norm_types_used = names(standardized_data_list)

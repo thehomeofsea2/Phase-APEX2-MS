@@ -1,73 +1,73 @@
 # ============================================================================
-# Module 2: Data Import and Sample Group Table
+# Module 2: 数据读取与分组表
 # ============================================================================
-# Functions:
-#   1. Read TSV data files
-#   2. Automatically clean column names (remove common prefixes/suffixes)
-#   3. Generate sampleGroup_template.csv (with suggested elements)
-#   4. Read user-filled sampleGroup.csv
-#   5. Generate FinalName and rename data columns
-#
-# Input: dir_config
-# Output: data_raw.RData, sampleGroup.RData
+# 功能：
+#   1. 读取TSV数据文件
+#   2. 自动清理列名（去除共同前缀/后缀）
+#   3. 生成sampleGroup_template.csv（含提示元素）
+#   4. 读取用户填写的sampleGroup.csv
+#   5. 生成FinalName并重命名数据列
+# 
+# 输入：dir_config
+# 输出：data_raw.RData, sampleGroup.RData
 # ============================================================================
 
-#' Read data and generate template
-#'
-#' @param dir_config Directory configuration
-#' @param file_pattern TSV file matching pattern, default "_matrix.*\\.tsv$"
-#' @return List containing data and template
+#' 读取数据并生成模板
+#' 
+#' @param dir_config 目录配置
+#' @param file_pattern TSV文件匹配模式，默认"_matrix.*\\.tsv$"
+#' @return 包含data和template的列表
 module02_read_and_generate_template <- function(dir_config, file_pattern = "_matrix.*\\.tsv$") {
   
   cat("\n----------------------------------------\n")
-  cat("Step 1: Read data files\n")
+  cat("步骤1: 读取数据文件\n")
   cat("----------------------------------------\n")
   
-  # Read TSV files
+  # 读取TSV文件
   setwd(dir_config$rawdata)
   myfiles <- list.files(pattern = file_pattern)
-
+  
   if (length(myfiles) == 0) {
-    stop(sprintf("✗ Error: No files matching '%s' found in %s", file_pattern, dir_config$rawdata))
+    stop(sprintf("✗ 错误：在 %s 中未找到匹配 '%s' 的文件", dir_config$rawdata, file_pattern))
   }
-
-  cat(sprintf("Found %d files:\n", length(myfiles)))
+  
+  cat(sprintf("找到 %d 个文件:\n", length(myfiles)))
   for (i in seq_along(myfiles)) {
     cat(sprintf("  [%d] %s\n", i, myfiles[i]))
   }
-
-  # Read the first file (logic can be extended if multiple files exist)
+  
+  # 读取第一个文件（如有多个文件，可扩展此逻辑）
   data_raw <- read_tsv(myfiles[1], show_col_types = FALSE)
-  cat(sprintf("\n✓ File read: %s\n", myfiles[1]))
-  cat(sprintf("  Dimensions: %d rows × %d columns\n", nrow(data_raw), ncol(data_raw)))
+  cat(sprintf("\n✓ 已读取文件: %s\n", myfiles[1]))
+  cat(sprintf("  维度: %d 行 × %d 列\n", nrow(data_raw), ncol(data_raw)))
   
   # --------------------------------------------------------------------------
-  # Step 2: Auto-clean column names
+  # 步骤2: 自动清理列名
   # --------------------------------------------------------------------------
   cat("\n----------------------------------------\n")
-  cat("Step 2: Auto-clean column names\n")
+  cat("步骤2: 自动清理列名\n")
   cat("----------------------------------------\n")
-
+  
   original_colnames <- colnames(data_raw)
-  cat("Original column names:\n")
+  cat("原始列名:\n")
   print(head(original_colnames, 10))
-
-  # First column defaults to Gene
+  
+  # 第一列默认为Gene
   cleaned_colnames <- original_colnames
   cleaned_colnames[1] <- "Gene"
-
-  # Detect and remove common prefixes/suffixes (except Gene column)
+  
+  # 检测并去除共同前缀/后缀（除Gene列外）
   if (ncol(data_raw) > 1) {
     sample_cols <- original_colnames[-1]
-
-    # Find common prefix
+    
+    # 查找共同前缀
     common_prefix <- ""
     if (length(sample_cols) > 1) {
-      # Use first and last strings to find common prefix
+      # 使用第一个和最后一个字符串找共同前缀
       sorted_cols <- sort(sample_cols)
       first <- sorted_cols[1]
       last <- sorted_cols[length(sorted_cols)]
-
+      
       for (i in 1:min(nchar(first), nchar(last))) {
         if (substr(first, 1, i) == substr(last, 1, i)) {
           common_prefix <- substr(first, 1, i)
@@ -76,47 +76,47 @@ module02_read_and_generate_template <- function(dir_config, file_pattern = "_mat
         }
       }
     }
-
-    # Remove common prefix (if exists and meaningful)
+    
+    # 去除共同前缀（如果存在且有意义）
     if (nchar(common_prefix) > 0 && all(startsWith(sample_cols, common_prefix))) {
       cleaned_sample_cols <- substr(sample_cols, nchar(common_prefix) + 1, nchar(sample_cols))
-      # Check if cleaned content is still valid
+      # 检查清理后是否还有有效内容
       if (all(nchar(cleaned_sample_cols) > 0)) {
         cleaned_colnames[-1] <- cleaned_sample_cols
-        cat(sprintf("\n✓ Removed common prefix: '%s'\n", common_prefix))
+        cat(sprintf("\n✓ 去除共同前缀: '%s'\n", common_prefix))
       }
     }
   }
-
+  
   colnames(data_raw) <- cleaned_colnames
-  cat("\nCleaned column names:\n")
+  cat("\n清理后列名:\n")
   print(head(colnames(data_raw), 10))
   
   # --------------------------------------------------------------------------
-  # Step 3: Generate sampleGroup template
+  # 步骤3: 生成sampleGroup模板
   # --------------------------------------------------------------------------
   cat("\n----------------------------------------\n")
-  cat("Step 3: Generate sampleGroup template\n")
+  cat("步骤3: 生成sampleGroup模板\n")
   cat("----------------------------------------\n")
-
-  # Get sample column names (except Gene)
+  
+  # 获取样本列名（除Gene外）
   sample_names <- colnames(data_raw)[-1]
   n_samples <- length(sample_names)
-
-  # Generate smart example values (ensure all options appear at least once)
+  
+  # 生成智能示例值（确保所有选项至少出现一次）
   generate_example_values <- function(n, options) {
     n_opts <- length(options)
     if (n <= n_opts) {
       return(options[1:n])
     } else {
-      # Even distribution
+      # 均匀分配
       repeats <- rep(ceiling(n / n_opts), n_opts)
       values <- rep(options, repeats)
       return(values[1:n])
     }
   }
-
-  # Create template data frame
+  
+  # 创建模板数据框
   template <- data.frame(
     OriginalName = sample_names,
     bioGroup = "",
@@ -126,27 +126,27 @@ module02_read_and_generate_template <- function(dir_config, file_pattern = "_mat
     replicate = rep(1:3, length.out = n_samples),
     FirstROCgroup = generate_example_values(n_samples, c("A", "B", "C", "NA")),
     SecondROCgroup = generate_example_values(n_samples, c("A", "B", "C", "D", "E", "F")),
-    Order = 1:n_samples,  # Default order
+    Order = 1:n_samples,  # 默认顺序
     FinalName = "",
     stringsAsFactors = FALSE
   )
-
-  cat(sprintf("✓ Template generated: %d samples\n", nrow(template)))
-
-  # Save template to working directory
+  
+  cat(sprintf("✓ 生成模板: %d 个样本\n", nrow(template)))
+  
+  # 保存模板到工作目录
   setwd(dir_config$root)
   write.csv(template, "Module02_sampleGroup_template.csv", row.names = FALSE)
-  cat("\n✓ Template saved: Module02_sampleGroup_template.csv\n")
-  cat("\n📝 Please fill in the following columns:\n")
-  cat("  - bioGroup: Biological group name\n")
-  cat("  - CatalyticGroup: Cata or NoCat\n")
-  cat("  - PLtype: Light or H2O2 or PL\n")
-  cat("  - Context: Experiment or Control or Spatial\n")
-  cat("  - replicate: 1 or 2 or 3\n")
+  cat("\n✓ 模板已保存: Module02_sampleGroup_template.csv\n")
+  cat("\n📝 请填写以下列:\n")
+  cat("  - bioGroup: 生物学分组名称\n")
+  cat("  - CatalyticGroup: Cata 或 NoCat\n")
+  cat("  - PLtype: Light 或 H2O2 或 PL\n")
+  cat("  - Context: Experiment 或 Control 或 Spatial\n")
+  cat("  - replicate: 1 或 2 或 3\n")
   cat("  - FirstROCgroup: A / B / C / A&B / NA\n")
   cat("  - SecondROCgroup: A / B / C / D / E / F\n")
-  cat("  - Order: Integer (1/2/3...), controls data column display order, 1 appears first\n")
-  cat("  (FinalName will be auto-generated, please leave empty)\n")
+  cat("  - Order: 整数（1/2/3...），控制数据列展示顺序，1最先出现\n")
+  cat("  (FinalName 将自动生成，请留空)\n")
   
   return(list(data = data_raw, template = template))
 }
@@ -160,97 +160,97 @@ module02_read_and_generate_template <- function(dir_config, file_pattern = "_mat
 module02_process_samplegroup <- function(dir_config, data_raw) {
   
   cat("\n----------------------------------------\n")
-  cat("Step 4: Read user-filled sampleGroup_template\n")
+  cat("步骤4: 读取用户填写的sampleGroup_template\n")
   cat("----------------------------------------\n")
-
+  
   setwd(dir_config$root)
-
-  # Check if file exists
+  
+  # 检查文件是否存在
   template_file <- "Module02_sampleGroup_template.csv"
   if (!file.exists(template_file)) {
-    stop(sprintf("✗ Error: File %s not found\nPlease run Step 1 to generate template first", template_file))
+    stop(sprintf("✗ 错误：未找到文件 %s\n请先运行步骤1生成模板", template_file))
   }
-
-  # Read user-filled template file
+  
+  # 读取用户填写的模板文件
   sampleGroup <- read.csv(template_file, stringsAsFactors = FALSE)
-  cat(sprintf("✓ File read: %s\n", template_file))
-  cat(sprintf("  Rows: %d\n", nrow(sampleGroup)))
-
-  # Validate required columns
-  required_cols <- c("OriginalName", "bioGroup", "CatalyticGroup", "PLtype",
+  cat(sprintf("✓ 已读取: %s\n", template_file))
+  cat(sprintf("  行数: %d\n", nrow(sampleGroup)))
+  
+  # 验证必需列
+  required_cols <- c("OriginalName", "bioGroup", "CatalyticGroup", "PLtype", 
                      "Context", "replicate", "FirstROCgroup", "SecondROCgroup", "Order")
   missing_cols <- setdiff(required_cols, colnames(sampleGroup))
   if (length(missing_cols) > 0) {
-    stop(sprintf("✗ Error: Missing required columns: %s", paste(missing_cols, collapse = ", ")))
+    stop(sprintf("✗ 错误：缺少必需列: %s", paste(missing_cols, collapse = ", ")))
   }
-
-  # Validate if filled
+  
+  # 验证是否填写
   empty_bioGroup <- sampleGroup$bioGroup == "" | is.na(sampleGroup$bioGroup)
   if (any(empty_bioGroup)) {
-    stop(sprintf("✗ Error: bioGroup not filled in rows %s",
+    stop(sprintf("✗ 错误：第 %s 行的 bioGroup 未填写", 
                  paste(which(empty_bioGroup), collapse = ", ")))
   }
-
-  # Validate Order column
+  
+  # 验证Order列
   if (any(is.na(sampleGroup$Order))) {
-    stop("✗ Error: Order column has empty values, please fill with integers")
+    stop("✗ 错误：Order列存在空值，请填写整数")
   }
   if (!all(sampleGroup$Order == as.integer(sampleGroup$Order))) {
-    stop("✗ Error: Order column must be integers")
+    stop("✗ 错误：Order列必须为整数")
   }
   
   # --------------------------------------------------------------------------
-  # Step 5: Sort sampleGroup by Order and reorder data columns
+  # 步骤5: 根据Order排序sampleGroup和重排数据列
   # --------------------------------------------------------------------------
   cat("\n----------------------------------------\n")
-  cat("Step 5: Reorder data columns by Order\n")
+  cat("步骤5: 根据Order重排数据列\n")
   cat("----------------------------------------\n")
-
-  # Sort sampleGroup by Order
+  
+  # 按Order排序sampleGroup
   sampleGroup <- sampleGroup %>% arrange(Order)
-  cat("✓ sampleGroup sorted by Order\n")
-
-  # Get ordered column names (keep Gene as first column)
+  cat("✓ sampleGroup已按Order排序\n")
+  
+  # 获取排序后的列名顺序（保持Gene在第一列）
   ordered_sample_names <- sampleGroup$OriginalName
-
-  # Check if all OriginalName exist in data_raw
+  
+  # 检查是否所有OriginalName都在data_raw中
   missing_samples <- setdiff(ordered_sample_names, colnames(data_raw)[-1])
   if (length(missing_samples) > 0) {
-    stop(sprintf("✗ Error: Samples in sampleGroup not found in data: %s",
+    stop(sprintf("✗ 错误：sampleGroup中的样本在数据中不存在: %s", 
                  paste(missing_samples, collapse = ", ")))
   }
-
-  # Reorder data_raw columns: Gene column + sample columns sorted by Order
+  
+  # 重排data_raw的列：Gene列 + 按Order排序的样本列
   data_raw <- data_raw %>% select(Gene, all_of(ordered_sample_names))
-  cat("✓ Data columns reordered by Order\n")
-  cat("\nNew column order:\n")
+  cat("✓ 数据列已按Order重新排列\n")
+  cat("\n新的列顺序:\n")
   print(head(colnames(data_raw), 10))
   
   # --------------------------------------------------------------------------
-  # Step 6: Generate FinalName
+  # 步骤6: 生成FinalName
   # --------------------------------------------------------------------------
   cat("\n----------------------------------------\n")
-  cat("Step 6: Generate FinalName\n")
+  cat("步骤6: 生成FinalName\n")
   cat("----------------------------------------\n")
-
+  
   # FinalName = bioGroup + _LFQ_ + replicate
   sampleGroup$FinalName <- paste0(sampleGroup$bioGroup, "_LFQ_", sampleGroup$replicate)
-
-  cat("✓ FinalName generation completed\n")
-  cat("\nExample:\n")
+  
+  cat("✓ FinalName 生成完成\n")
+  cat("\n示例:\n")
   print(head(sampleGroup[, c("OriginalName", "bioGroup", "replicate", "FinalName", "Order")], 5))
   
   # --------------------------------------------------------------------------
-  # Step 7: Rename data columns
+  # 步骤7: 重命名数据列
   # --------------------------------------------------------------------------
   cat("\n----------------------------------------\n")
-  cat("Step 7: Rename data columns\n")
+  cat("步骤7: 重命名数据列\n")
   cat("----------------------------------------\n")
-
-  # Create column name mapping
+  
+  # 创建列名映射
   name_mapping <- setNames(sampleGroup$FinalName, sampleGroup$OriginalName)
-
-  # Rename (keep Gene column unchanged)
+  
+  # 重命名（保持Gene列不变）
   current_colnames <- colnames(data_raw)
   new_colnames <- current_colnames
   for (i in 2:length(current_colnames)) {
@@ -259,30 +259,30 @@ module02_process_samplegroup <- function(dir_config, data_raw) {
       new_colnames[i] <- name_mapping[old_name]
     }
   }
-
+  
   colnames(data_raw) <- new_colnames
-  cat("✓ Column renaming completed\n")
-  cat("\nNew column names:\n")
+  cat("✓ 列名重命名完成\n")
+  cat("\n新列名:\n")
   print(head(colnames(data_raw), 10))
   
   # --------------------------------------------------------------------------
-  # Step 8: Save data
+  # 步骤8: 保存数据
   # --------------------------------------------------------------------------
   cat("\n----------------------------------------\n")
-  cat("Step 8: Save data\n")
+  cat("步骤8: 保存数据\n")
   cat("----------------------------------------\n")
-
-  # Save final sampleGroup to working directory (CSV format)
+  
+  # 保存最终的sampleGroup到工作目录（CSV格式）
   write.csv(sampleGroup, "Module02_sampleGroup.csv", row.names = FALSE)
-  cat("✓ Saved: Module02_sampleGroup.csv (working directory, final version)\n")
-  cat("  This file contains validated grouping information and generated FinalName\n")
-
-  # Save CSV to Output directory
+  cat("✓ 已保存: Module02_sampleGroup.csv (工作目录，最终版本)\n")
+  cat("  该文件包含验证后的分组信息和生成的FinalName\n")
+  
+  # 保存CSV到Output目录
   output_file <- file.path(dir_config$output, "Module02_data_raw.csv")
   write.csv(data_raw, output_file, row.names = FALSE)
-  cat(sprintf("✓ Saved: %s\n", output_file))
-
-  cat("\n✓ Step 8 completed, returning data to main program\n")
+  cat(sprintf("✓ 已保存: %s\n", output_file))
+  
+  cat("\n✓ 步骤8完成，返回数据到主程序\n")
   
   return(list(data = data_raw, sampleGroup = sampleGroup))
 }
@@ -296,21 +296,21 @@ module02_process_samplegroup <- function(dir_config, data_raw) {
 module02_data_import <- function(dir_config, file_pattern = "_matrix.*\\.tsv$", auto_process = FALSE) {
   
   cat("\n========================================\n")
-  cat("Module 2: Data Import and Sample Group Table\n")
+  cat("Module 2: 数据读取与分组表\n")
   cat("========================================\n")
-
-  # Steps 1-3: Read data and generate template
+  
+  # 步骤1-3: 读取数据并生成模板
   result <- module02_read_and_generate_template(dir_config, file_pattern)
-
+  
   if (auto_process) {
-    # If auto processing, try to read filled sampleGroup
+    # 如果自动处理，尝试读取已填写的sampleGroup
     result <- module02_process_samplegroup(dir_config, result$data)
   } else {
-    cat("\n⚠ Please complete the following steps:\n")
-    cat("  1. Open sampleGroup_template.csv\n")
-    cat("  2. Fill all required columns\n")
-    cat("  3. Save as sampleGroup.csv\n")
-    cat("  4. Continue running in main_pipeline.R\n")
+    cat("\n⚠ 请完成以下步骤:\n")
+    cat("  1. 打开 sampleGroup_template.csv\n")
+    cat("  2. 填写所有必需列\n")
+    cat("  3. 另存为 sampleGroup.csv\n")
+    cat("  4. 在 main_pipeline.R 中继续运行\n")
   }
   
   return(invisible(result))

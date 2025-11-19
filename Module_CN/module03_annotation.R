@@ -1,53 +1,53 @@
 # ============================================================================
-# Module 3: Annotation System
+# Module 3: 注释系统
 # ============================================================================
-# Functions:
-#   1. Read HPA database, generate Cytosol/Nuclear/Nuclear_Cytosol annotations
-#   2. Read MitoCarta data, generate Mitochondrion annotation
-#   3. Read user-specified TP reference data (e.g., GO_SGs, HaloMap, etc.)
-#   4. Support additional nucleolus and custom TP reference files
-#   5. Add TP annotation columns based on preset modes or user configuration
-#   6. If no TP annotation configured, only keep basic annotations (Cytosol/Nuclear/Mitochondrion)
+# 功能：
+#   1. 读取HPA数据库，生成Cytosol/Nuclear/Nuclear_Cytosol注释
+#   2. 读取MitoCarta数据，生成Mitochondrion注释
+#   3. 读取用户指定的TP参考数据（如GO_SGs, HaloMap等）
+#   4. 支持额外的核仁与自定义TP参考文件
+#   5. 根据预设模式或用户配置添加TP注释列
+#   6. 如未配置TP注释，则只保留基础注释（Cytosol/Nuclear/Mitochondrion）
 #
-# Input: dir_config, data_raw, sampleGroup, custom_annotations, custom_tp_sources
-# Output: Module03_workspace.RData, Module03_data_annotated.csv
+# 输入：dir_config, data_raw, sampleGroup, custom_annotations, custom_tp_sources
+# 输出：Module03_workspace.RData, Module03_data_annotated.csv
 # ============================================================================
 
-#' Read and process HPA data
-#'
-#' @param dir_config Directory configuration
-#' @param mode Annotation mode ("SG" or "Nucleolus"), affects HPA filtering logic
-#' @return List containing Cytosol/Nuclear/Nuclear_Cytosol annotations
+#' 读取并处理HPA数据
+#' 
+#' @param dir_config 目录配置
+#' @param mode 注释模式（"SG" 或 "Nucleolus"），影响HPA筛选逻辑
+#' @return 包含Cytosol/Nuclear/Nuclear_Cytosol注释的列表
 load_HPA_annotations <- function(dir_config, mode = c("SG", "Nucleolus")) {
   mode <- match.arg(mode)
-
+  
   cat("\n----------------------------------------\n")
-  cat("Step 1: Read HPA database\n")
+  cat("步骤1: 读取HPA数据库\n")
   cat("----------------------------------------\n")
-
+  
   hpa_file <- file.path(dir_config$reference, "proteinatlas.tsv")
-
+  
   if (!file.exists(hpa_file)) {
-    stop(sprintf("✗ Error: HPA file not found - %s", hpa_file))
+    stop(sprintf("✗ 错误：未找到HPA文件 - %s", hpa_file))
   }
-
+  
   HPA_DATA <- read_tsv(hpa_file, show_col_types = FALSE)
-  cat(sprintf("✓ HPA data read: %d rows\n", nrow(HPA_DATA)))
-
-  # Select needed columns and filter Uncertain
-  HPA_DATA <- HPA_DATA %>%
+  cat(sprintf("✓ 已读取HPA数据: %d 行\n", nrow(HPA_DATA)))
+  
+  # 选择需要的列并过滤Uncertain
+  HPA_DATA <- HPA_DATA %>% 
     select(1:11,
            `Reliability (IF)`,
            `Subcellular location`,
            `Subcellular main location`,
-           `Subcellular additional location`) %>%
+           `Subcellular additional location`) %>% 
     filter(!`Reliability (IF)` == "Uncertain")
-
-  cat(sprintf("✓ After filtering: %d rows\n", nrow(HPA_DATA)))
+  
+  cat(sprintf("✓ 过滤后: %d 行\n", nrow(HPA_DATA)))
   
   if (mode == "Nucleolus") {
     # ------------------------------------------------------------------------
-    # Nucleolus mode: Strictly follow 20250725.R definition
+    # 核仁模式：严格遵循20250725.R的定义
     # ------------------------------------------------------------------------
     Cytosol_HPA_anno <- HPA_DATA %>% 
       filter(str_detect(`Subcellular main location`, "yto|crotubule|ctin|Intermediate")) %>% 
@@ -70,7 +70,7 @@ load_HPA_annotations <- function(dir_config, mode = c("SG", "Nucleolus")) {
     
   } else {
     # ------------------------------------------------------------------------
-    # SG mode: Keep original module03 default definition
+    # SG模式：保留原module03的默认定义
     # ------------------------------------------------------------------------
     Cytosol_HPA_anno <- HPA_DATA %>% 
       filter(str_detect(`Subcellular main location`, "yto|crotubule|ctin")) %>% 
@@ -91,27 +91,27 @@ load_HPA_annotations <- function(dir_config, mode = c("SG", "Nucleolus")) {
       filter(!str_detect(`Subcellular location`, "itochond"))
   }
   
-  cat(sprintf("✓ Cytosol annotation: %d proteins\n", nrow(Cytosol_HPA_anno)))
-  cat(sprintf("✓ Nuclear annotation: %d proteins\n", nrow(Nuclear_HPA_anno)))
-  cat(sprintf("✓ Nuclear_Cytosol annotation: %d proteins\n", nrow(Nuclear_Cytosol_HPA_anno)))
+  cat(sprintf("✓ Cytosol注释: %d 个蛋白\n", nrow(Cytosol_HPA_anno)))
+  cat(sprintf("✓ Nuclear注释: %d 个蛋白\n", nrow(Nuclear_HPA_anno)))
+  cat(sprintf("✓ Nuclear_Cytosol注释: %d 个蛋白\n", nrow(Nuclear_Cytosol_HPA_anno)))
   
   # --------------------------------------------------------------------------
-  # Generate Nucleolus annotations (main location + all locations)
+  # 生成Nucleolus注释（main location + 所有location）
   # --------------------------------------------------------------------------
   Nucleolus_main_Anno <- HPA_DATA %>%
     filter(str_detect(`Subcellular main location`, "ucleol"))
-  cat(sprintf("✓ Nucleolus(main location) annotation: %d proteins\n", nrow(Nucleolus_main_Anno)))
+  cat(sprintf("✓ Nucleolus(main location)注释: %d 个蛋白\n", nrow(Nucleolus_main_Anno)))
   
   Nucleolus_Anno <- HPA_DATA %>%
     filter(str_detect(`Subcellular location`, "ucleol"))
-  cat(sprintf("✓ Nucleolus(all location) annotation: %d proteins\n", nrow(Nucleolus_Anno)))
+  cat(sprintf("✓ Nucleolus(all location)注释: %d 个蛋白\n", nrow(Nucleolus_Anno)))
   
-  # Check intersections
+  # 检查交集
   cyto_nuclear_intersect <- intersect(Cytosol_HPA_anno$Gene, Nuclear_HPA_anno$Gene)
   cyto_nc_intersect <- intersect(Cytosol_HPA_anno$Gene, Nuclear_Cytosol_HPA_anno$Gene)
   nuclear_nc_intersect <- intersect(Nuclear_HPA_anno$Gene, Nuclear_Cytosol_HPA_anno$Gene)
   
-  cat(sprintf("\nIntersection check:\n"))
+  cat(sprintf("\n交集检查:\n"))
   cat(sprintf("  Cytosol ∩ Nuclear: %d\n", length(cyto_nuclear_intersect)))
   cat(sprintf("  Cytosol ∩ Nuclear_Cytosol: %d\n", length(cyto_nc_intersect)))
   cat(sprintf("  Nuclear ∩ Nuclear_Cytosol: %d\n", length(nuclear_nc_intersect)))
@@ -126,37 +126,37 @@ load_HPA_annotations <- function(dir_config, mode = c("SG", "Nucleolus")) {
 }
 
 
-#' Read MitoCarta data
-#'
-#' @param dir_config Directory configuration
-#' @return MitoCarta annotation data frame
+#' 读取MitoCarta数据
+#' 
+#' @param dir_config 目录配置
+#' @return MitoCarta注释数据框
 load_MitoCarta_annotations <- function(dir_config) {
-
+  
   cat("\n----------------------------------------\n")
-  cat("Step 2: Read MitoCarta data\n")
+  cat("步骤2: 读取MitoCarta数据\n")
   cat("----------------------------------------\n")
-
+  
   mito_file <- file.path(dir_config$reference, "MitoCarta3.0.csv")
-
+  
   if (!file.exists(mito_file)) {
-    stop(sprintf("✗ Error: MitoCarta file not found - %s", mito_file))
+    stop(sprintf("✗ 错误：未找到MitoCarta文件 - %s", mito_file))
   }
-
+  
   MitoCarta_anno <- read.csv(mito_file, stringsAsFactors = FALSE)
-  cat(sprintf("✓ MitoCarta data read: %d proteins\n", nrow(MitoCarta_anno)))
-
+  cat(sprintf("✓ 已读取MitoCarta数据: %d 个蛋白\n", nrow(MitoCarta_anno)))
+  
   return(MitoCarta_anno)
 }
 
 
-#' Read SGs reference data
-#'
-#' @param dir_config Directory configuration
-#' @return List containing various SGs references
+#' 读取SGs参考数据
+#' 
+#' @param dir_config 目录配置
+#' @return 包含各种SGs参考的列表
 load_SGs_references <- function(dir_config) {
-
+  
   cat("\n----------------------------------------\n")
-  cat("Step 3: Read SGs reference data\n")
+  cat("步骤3: 读取SGs参考数据\n")
   cat("----------------------------------------\n")
   
   sgs_refs <- list()
@@ -165,41 +165,41 @@ load_SGs_references <- function(dir_config) {
   go_file <- file.path(dir_config$reference, "CytoSGs GO.tsv")
   if (file.exists(go_file)) {
     sgs_refs$GO_SGs <- read_tsv(go_file, show_col_types = FALSE)
-    cat(sprintf("✓ GO_SGs: %d proteins\n", nrow(sgs_refs$GO_SGs)))
+    cat(sprintf("✓ GO_SGs: %d 个蛋白\n", nrow(sgs_refs$GO_SGs)))
   } else {
-    warning(sprintf("⚠ GO SGs file not found: %s", go_file))
+    warning(sprintf("⚠ 未找到GO SGs文件: %s", go_file))
   }
   
   # HaloMap SGs reference
   halomap_file <- file.path(dir_config$reference, "HaloMap SGs reference.csv")
   if (file.exists(halomap_file)) {
     sgs_refs$HaloMap_SGs <- read.csv(halomap_file, stringsAsFactors = FALSE)
-    cat(sprintf("✓ HaloMap_SGs: %d proteins\n", nrow(sgs_refs$HaloMap_SGs)))
+    cat(sprintf("✓ HaloMap_SGs: %d 个蛋白\n", nrow(sgs_refs$HaloMap_SGs)))
   } else {
-    warning(sprintf("⚠ HaloMap SGs file not found: %s", halomap_file))
+    warning(sprintf("⚠ 未找到HaloMap SGs文件: %s", halomap_file))
   }
   
   # HaloMap different methods
   halomap_methods_file <- file.path(dir_config$reference, "HaloMap differentMethods SGs.csv")
   if (file.exists(halomap_methods_file)) {
     sgs_refs$HaloMap_DifMethods <- read.csv(halomap_methods_file, stringsAsFactors = FALSE)
-    cat(sprintf("✓ HaloMap_DifMethods: %d proteins\n", nrow(sgs_refs$HaloMap_DifMethods)))
+    cat(sprintf("✓ HaloMap_DifMethods: %d 个蛋白\n", nrow(sgs_refs$HaloMap_DifMethods)))
   } else {
-    warning(sprintf("⚠ HaloMap different methods file not found: %s", halomap_methods_file))
+    warning(sprintf("⚠ 未找到HaloMap不同方法文件: %s", halomap_methods_file))
   }
   
   return(sgs_refs)
 }
 
 
-#' Read nucleolus reference data (CLL etc.)
+#' 读取核仁参考数据（CLL等）
 #'
-#' @param dir_config Directory configuration
-#' @return List containing nucleolus-related references
+#' @param dir_config 目录配置
+#' @return 包含核仁相关参考的列表
 load_nucleolus_references <- function(dir_config) {
-
+  
   cat("\n----------------------------------------\n")
-  cat("Additional reference: Read nucleolus annotations (CLL etc.)\n")
+  cat("附加参考: 读取核仁注释（CLL等）\n")
   cat("----------------------------------------\n")
   
   candidate_files <- c("CLL_Nucleolus_subNucleolus.csv", "CLL_Nucleolus.csv")
@@ -215,39 +215,39 @@ load_nucleolus_references <- function(dir_config) {
   }
   
   if (is.null(cll_file)) {
-    warning("⚠ CLL nucleolus reference file not found (CLL_Nucleolus*.csv), will skip CLL_Localization annotation")
+    warning("⚠ 未找到CLL核仁参考文件（CLL_Nucleolus*.csv），将跳过CLL_Localization注释")
     return(nucleolus_refs)
   }
   
   cll_anno <- read.csv(cll_file, stringsAsFactors = FALSE, check.names = FALSE)
   gene_col <- intersect(c("Gene", "CLL_Nucleolus"), names(cll_anno))
   if (length(gene_col) == 0) {
-    warning(sprintf("⚠ CLL nucleolus reference missing Gene column: %s", basename(cll_file)))
+    warning(sprintf("⚠ CLL核仁参考缺少Gene列: %s", basename(cll_file)))
   } else {
     if (!"Gene" %in% names(cll_anno)) {
       names(cll_anno)[names(cll_anno) == gene_col[1]] <- "Gene"
     }
     nucleolus_refs$CLL_Nucleolus <- cll_anno
-    cat(sprintf("✓ CLL_Nucleolus: %d proteins\n", nrow(cll_anno)))
+    cat(sprintf("✓ CLL_Nucleolus: %d 个蛋白\n", nrow(cll_anno)))
   }
   
   return(nucleolus_refs)
 }
 
 
-#' Read custom TP reference files
+#' 读取自定义TP参考文件
 #'
-#' @param custom_tp_sources List, each element contains source_name, file, file_type, gene_column
-#' @param dir_config Directory configuration
-#' @return Named list (source_name -> data frame)
+#' @param custom_tp_sources 列表，每个元素包含source_name、file、file_type、gene_column
+#' @param dir_config 目录配置
+#' @return 命名列表（source_name -> 数据框）
 load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
-
+  
   if (is.null(custom_tp_sources) || length(custom_tp_sources) == 0) {
     return(list())
   }
-
+  
   cat("\n----------------------------------------\n")
-  cat("Additional reference: Read custom TP files\n")
+  cat("附加参考: 读取自定义TP文件\n")
   cat("----------------------------------------\n")
   
   custom_refs <- list()
@@ -256,10 +256,10 @@ load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
     cfg <- custom_tp_sources[[i]]
     
     if (is.null(cfg$source_name) || cfg$source_name == "") {
-      stop(sprintf("✗ Error: %dth custom TP missing source_name", i))
+      stop(sprintf("✗ 错误：第%d个自定义TP缺少source_name", i))
     }
     if (is.null(cfg$file) || cfg$file == "") {
-      stop(sprintf("✗ Error: custom TP %s missing file path", cfg$source_name))
+      stop(sprintf("✗ 错误：自定义TP %s 缺少file路径", cfg$source_name))
     }
     
     source_name <- cfg$source_name
@@ -273,7 +273,7 @@ load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
     }
     
     if (!file.exists(file_path)) {
-      stop(sprintf("✗ Error: custom TP %s file does not exist - %s", source_name, cfg$file))
+      stop(sprintf("✗ 错误：自定义TP %s 的文件不存在 - %s", source_name, cfg$file))
     }
     
     file_type <- cfg$file_type
@@ -292,26 +292,26 @@ load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
       txt = read_tsv(file_path, show_col_types = FALSE),
       xlsx = {
         if (!requireNamespace("readxl", quietly = TRUE)) {
-          stop("✗ Error: readxl package required to read xlsx files")
+          stop("✗ 错误：需要readxl包以读取xlsx文件")
         }
         readxl::read_excel(file_path)
       },
       xls = {
         if (!requireNamespace("readxl", quietly = TRUE)) {
-          stop("✗ Error: readxl package required to read xls files")
+          stop("✗ 错误：需要readxl包以读取xls文件")
         }
         readxl::read_excel(file_path)
       },
-      stop(sprintf("✗ Error: unsupported file type %s (source: %s)", file_type, source_name))
+      stop(sprintf("✗ 错误：不支持的文件类型 %s（source: %s）", file_type, source_name))
     )
     
     data <- as.data.frame(data, stringsAsFactors = FALSE)
     
     if (!(gene_column %in% colnames(data))) {
-      stop(sprintf("✗ Error: custom TP %s missing gene column %s", source_name, gene_column))
+      stop(sprintf("✗ 错误：自定义TP %s 缺少基因列 %s", source_name, gene_column))
     }
     
-    cat(sprintf("✓ Custom TP: %s (%d rows, file: %s)\n", source_name, nrow(data), basename(file_path)))
+    cat(sprintf("✓ 自定义TP: %s (%d 行, 文件: %s)\n", source_name, nrow(data), basename(file_path)))
     custom_refs[[source_name]] <- data
   }
   
@@ -319,10 +319,10 @@ load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
 }
 
 
-#' Built-in annotation configurations
+#' 内置注释配置
 #'
-#' @param mode Mode: SG or Nucleolus
-#' @return List of annotation configurations
+#' @param mode 模式：SG 或 Nucleolus
+#' @return 注释配置列表
 get_preset_annotation_configs <- function(mode = c("SG", "Nucleolus")) {
   mode <- match.arg(mode)
   
@@ -376,12 +376,12 @@ get_preset_annotation_configs <- function(mode = c("SG", "Nucleolus")) {
 }
 
 
-#' Build TP lookup table
-#'
-#' @param SGs_refs SGs reference list
-#' @param HPA_anno HPA annotation
-#' @param nucleolus_refs Nucleolus reference
-#' @return Name to data frame mapping
+#' 构建TP查找表
+#' 
+#' @param SGs_refs SGs参考列表
+#' @param HPA_anno HPA注释
+#' @param nucleolus_refs 核仁参考
+#' @return 名称到数据框的映射
 build_tp_lookup <- function(SGs_refs, HPA_anno, nucleolus_refs, custom_tp_refs = list()) {
   tp_lookup <- list()
   
@@ -416,19 +416,19 @@ build_tp_lookup <- function(SGs_refs, HPA_anno, nucleolus_refs, custom_tp_refs =
 }
 
 
-#' Annotate data
-#'
-#' @param data Data to be annotated
-#' @param HPA_anno HPA annotation list
-#' @param MitoCarta_anno MitoCarta annotation
-#' @param SGs_refs SGs reference list
-#' @param annotation_configs Annotation configuration list, each element format:
-#'   list(column_name = "annotation column name", TP_source = "TP data source", TP_column = "TP column name", TP_label = "TP label")
-#' @return Annotated data
+#' 对数据进行注释
+#' 
+#' @param data 待注释的数据
+#' @param HPA_anno HPA注释列表
+#' @param MitoCarta_anno MitoCarta注释
+#' @param SGs_refs SGs参考列表
+#' @param annotation_configs 注释配置列表，每个元素格式为：
+#'   list(column_name = "注释列名", TP_source = "TP数据源", TP_column = "TP列名", TP_label = "TP标签")
+#' @return 注释后的数据
 annotate_data <- function(data, HPA_anno, MitoCarta_anno, annotation_configs, tp_lookup = list()) {
-
+  
   cat("\n----------------------------------------\n")
-  cat("Step 4: Data annotation\n")
+  cat("步骤4: 数据注释\n")
   cat("----------------------------------------\n")
   
   data_annotated <- data
@@ -436,11 +436,11 @@ annotate_data <- function(data, HPA_anno, MitoCarta_anno, annotation_configs, tp
   get_tp_genes <- function(tp_source, tp_column) {
     tp_data <- tp_lookup[[tp_source]]
     if (is.null(tp_data)) {
-      warning(sprintf("⚠ TP source not found: %s, column will only contain basic localization", tp_source))
+      warning(sprintf("⚠ 未找到TP来源：%s，列将仅包含基础定位", tp_source))
       return(character(0))
     }
     if (!(tp_column %in% colnames(tp_data))) {
-      warning(sprintf("⚠ TP source %s missing column %s, column will only contain basic localization", tp_source, tp_column))
+      warning(sprintf("⚠ TP来源 %s 缺少列 %s，列将仅包含基础定位", tp_source, tp_column))
       return(character(0))
     }
     genes <- tp_data[[tp_column]]
@@ -454,12 +454,12 @@ annotate_data <- function(data, HPA_anno, MitoCarta_anno, annotation_configs, tp
     tp_column <- config$TP_column
     tp_label <- config$TP_label
     
-    cat(sprintf("\nAdding annotation column: %s\n", col_name))
-    cat(sprintf("  TP source: %s$%s\n", tp_source, tp_column))
-
+    cat(sprintf("\n添加注释列: %s\n", col_name))
+    cat(sprintf("  TP来源: %s$%s\n", tp_source, tp_column))
+    
     tp_genes <- get_tp_genes(tp_source, tp_column)
-
-    # Perform annotation (priority: TP > Nuclear/Cytosol/Nuclear_Cytosol > Mitochondrion > Other)
+    
+    # 进行注释（优先级：TP > Nuclear/Cytosol/Nuclear_Cytosol > Mitochondrion > Other）
     data_annotated <- data_annotated %>%
       mutate(!!col_name := case_when(
         Gene %in% tp_genes ~ tp_label,
@@ -470,28 +470,28 @@ annotate_data <- function(data, HPA_anno, MitoCarta_anno, annotation_configs, tp
         TRUE ~ "Other"
       ))
     
-    # Statistics
+    # 统计
     anno_counts <- table(data_annotated[[col_name]])
-    cat(sprintf("  Annotation statistics:\n"))
+    cat(sprintf("  注释统计:\n"))
     for (label in names(anno_counts)) {
       cat(sprintf("    %s: %d\n", label, anno_counts[label]))
     }
   }
-
-  cat("\n✓ Data annotation completed\n")
+  
+  cat("\n✓ 数据注释完成\n")
   return(data_annotated)
 }
 
 
-#' Module 3 main function
-#'
-#' @param dir_config Directory configuration
-#' @param data_raw Raw data
-#' @param sampleGroup Group information (optional, for subsequent analysis)
-#' @param custom_annotations User-defined annotation configuration (optional, overrides presets when not empty)
-#' @param annotation_mode Preset annotation mode ("SG" or "Nucleolus")
-#' @param custom_tp_sources Custom TP reference file configuration (optional)
-#' @param additional_annotations Additional annotation configurations (added on top of preset/custom)
+#' Module 3 主函数
+#' 
+#' @param dir_config 目录配置
+#' @param data_raw 原始数据
+#' @param sampleGroup 分组信息（可选，用于后续分析）
+#' @param custom_annotations 用户自定义注释配置（可选，非空时覆盖预设）
+#' @param annotation_mode 预设注释模式（"SG" 或 "Nucleolus"）
+#' @param custom_tp_sources 自定义TP参考文件配置（可选）
+#' @param additional_annotations 附加的注释配置（在预设/自定义基础上追加）
 module03_annotation <- function(dir_config,
                                 data_raw,
                                 sampleGroup = NULL,
@@ -501,13 +501,13 @@ module03_annotation <- function(dir_config,
                                 additional_annotations = NULL) {
   
   cat("\n========================================\n")
-  cat("Module 3: Annotation System\n")
+  cat("Module 3: 注释系统\n")
   cat("========================================\n")
   annotation_mode <- match.arg(annotation_mode)
-  cat(sprintf("Current annotation mode: %s\n", annotation_mode))
+  cat(sprintf("当前注释模式: %s\n", annotation_mode))
   
   # --------------------------------------------------------------------------
-  # Load reference data
+  # 加载参考数据
   # --------------------------------------------------------------------------
   HPA_anno <- load_HPA_annotations(dir_config, annotation_mode)
   MitoCarta_anno <- load_MitoCarta_annotations(dir_config)
@@ -515,25 +515,25 @@ module03_annotation <- function(dir_config,
   custom_tp_refs <- load_custom_tp_sources(custom_tp_sources, dir_config)
   
   # --------------------------------------------------------------------------
-  # Annotation mode and configuration
+  # 注释模式与配置
   # --------------------------------------------------------------------------
   use_custom <- !is.null(custom_annotations) && length(custom_annotations) > 0
   if (use_custom) {
     annotation_configs <- custom_annotations
-    cat(sprintf("✓ Using custom annotation configuration (%d columns)\n", length(annotation_configs)))
+    cat(sprintf("✓ 使用自定义注释配置（%d 列）\n", length(annotation_configs)))
   } else {
     annotation_configs <- get_preset_annotation_configs(annotation_mode)
     if (length(annotation_configs) == 0) {
-      cat("⚠ No TP annotation configured, will only use basic annotations (Cytosol/Nuclear/Mitochondrion)\n")
+      cat("⚠ 未配置TP注释，将只使用基础注释（Cytosol/Nuclear/Mitochondrion）\n")
     } else {
-      cat(sprintf("✓ Preset annotation configuration loaded (mode: %s, columns: %d)\n",
+      cat(sprintf("✓ 已加载预设注释配置（模式: %s, 列数: %d）\n",
                   annotation_mode, length(annotation_configs)))
     }
   }
-
+  
   has_additional <- !is.null(additional_annotations) && length(additional_annotations) > 0
   if (has_additional) {
-    cat(sprintf("✓ Adding custom annotation columns (%d columns)\n", length(additional_annotations)))
+    cat(sprintf("✓ 追加自定义注释列（%d 列）\n", length(additional_annotations)))
     annotation_configs <- c(annotation_configs, additional_annotations)
   }
   
@@ -549,14 +549,14 @@ module03_annotation <- function(dir_config,
   tp_lookup <- build_tp_lookup(SGs_refs, HPA_anno, nucleolus_refs, custom_tp_refs)
   
   # --------------------------------------------------------------------------
-  # User-defined annotation configuration (all TP annotation columns need manual configuration)
+  # 用户自定义注释配置（所有TP注释列需手动配置）
   # --------------------------------------------------------------------------
   if (length(annotation_configs) == 0) {
-    cat("  - No annotation configuration provided, result will keep original columns\n")
+    cat("  - 未提供注释配置，结果将保留原始列\n")
   }
 
   # --------------------------------------------------------------------------
-  # Execute annotation
+  # 执行注释
   # --------------------------------------------------------------------------
   data_annotated <- annotate_data(
     data_raw,
@@ -567,15 +567,15 @@ module03_annotation <- function(dir_config,
   )
   
   # --------------------------------------------------------------------------
-  # Save data
+  # 保存数据
   # --------------------------------------------------------------------------
   cat("\n----------------------------------------\n")
-  cat("Step 5: Save data\n")
+  cat("步骤5: 保存数据\n")
   cat("----------------------------------------\n")
-
+  
   setwd(dir_config$root)
-
-  # Save reference data (for subsequent modules)
+  
+  # 保存参考数据（供后续模块使用）
   annotation_references <- list(
     HPA_anno = HPA_anno,
     MitoCarta_anno = MitoCarta_anno,
@@ -587,12 +587,12 @@ module03_annotation <- function(dir_config,
     annotation_configs = annotation_configs
   )
   
-  # Save CSV to Output directory
+  # 保存CSV到Output目录
   output_file <- file.path(dir_config$output, "Module03_data_annotated.csv")
   write.csv(data_annotated, output_file, row.names = FALSE)
-  cat(sprintf("✓ Saved: %s (Output directory)\n", output_file))
-
-  cat("\n✓ Module 3 data processing completed, returning data to main program\n")
+  cat(sprintf("✓ 已保存: %s (Output目录)\n", output_file))
+  
+  cat("\n✓ Module 3 数据处理完成，返回数据到主程序\n")
   
   return(list(
     data_annotated = data_annotated,

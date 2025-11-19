@@ -1,32 +1,32 @@
-#' Module 09: Background Subtraction
+#' Module 09: 背景扣除
 #'
-#' Filter data based on ROC thresholds from Module 8, automatically generating Method A and Method B results:
-#' - Method A: Do not use FDR filtering for specified comparisons
-#' - Method B: Use FDR filtering for all comparisons
-#' - bioGroups with Context "Experiment": Apply threshold filtering
-#' - bioGroups with Context "Spatial": No threshold filtering, only select columns and remove NA
-#' - bioGroups with Context "Control": No operation
-#' - Generate statistical summaries for each bioGroup (count, mean, sum, etc.)
-#' - Plot stacked bar charts (count percentage and abundance percentage)
+#' 根据Module 8的ROC阈值对数据进行过滤，自动生成Method A和Method B两种结果：
+#' - Method A：对指定comparison不使用FDR过滤
+#' - Method B：对所有comparison使用FDR过滤
+#' - Context为"Experiment"的bioGroup：使用阈值过滤
+#' - Context为"Spatial"的bioGroup：不使用阈值过滤，只选择列和去除NA
+#' - Context为"Control"的bioGroup：不操作
+#' - 生成每个bioGroup的统计汇总（count, mean, sum等）
+#' - 绘制堆积条形图（数量比例和丰度比例）
 #'
-#' @param dir_config Directory configuration list (contains output, etc.)
-#' @param sampleGroup Sample grouping information (must contain Context column)
-#' @param diff_results Differential analysis results list (from Module 7)
-#' @param roc_thresholds ROC thresholds list (from Module 8)
-#' @param comparison_info Comparison information list (from Module 7, contains mapping from comparison to bioGroup)
-#' @param data_with_submito SubMito transformed data list from Module 8 (optional)
-#' @param selected_versions Data versions to analyze (NULL means all versions)
-#' @param fdr_threshold FDR threshold (default 0.05)
-#' @param no_fdr_comparisons Vector of comparisons that do not use FDR filtering in Method A (default NULL, i.e., process as Method B)
-#' @param use_roc_threshold Whether to use ROC threshold (default TRUE)
-#' @param fixed_fc_threshold Fixed FC threshold to use if not using ROC threshold (default NULL)
-#' @param min_valid_lfq Minimum number of valid LFQ values (default 2, for catalytic group filtering)
-#' @param annotation_column Annotation column for grouping and plotting (default "GO_Localization")
-#' @param plot_all_annotations Whether to show all annotations (TRUE) or only TP (FALSE)
-#' @param tp_label TP label (default "SGs")
-#' @param tp_color TP color (default "#DB6968")
+#' @param dir_config 目录配置列表（包含output等）
+#' @param sampleGroup 样本分组信息（必须包含Context列）
+#' @param diff_results 差异分析结果列表（来自Module 7）
+#' @param roc_thresholds ROC阈值列表（来自Module 8）
+#' @param comparison_info 比较信息列表（来自Module 7，包含comparison到bioGroup的映射）
+#' @param data_with_submito Module 8输出的SubMito转化数据列表（可选）
+#' @param selected_versions 需要分析的数据版本（NULL表示所有版本）
+#' @param fdr_threshold FDR阈值（默认0.05）
+#' @param no_fdr_comparisons Method A中不使用FDR过滤的comparison向量（默认NULL，即按Method B处理）
+#' @param use_roc_threshold 是否使用ROC threshold（默认TRUE）
+#' @param fixed_fc_threshold 如果不使用ROC threshold，使用的固定FC阈值（默认NULL）
+#' @param min_valid_lfq 最小有效LFQ值个数（默认2，用于催化组过滤）
+#' @param annotation_column 用于分组和作图的注释列（默认"GO_Localization"）
+#' @param plot_all_annotations 是否显示所有注释（TRUE）还是只显示TP（FALSE）
+#' @param tp_label TP标签（默认"SGs"）
+#' @param tp_color TP颜色（默认"#DB6968"）
 #'
-#' @return List containing filtered_data_A, filtered_data_B, merged_data_A, merged_data_B
+#' @return 包含filtered_data_A, filtered_data_B, merged_data_A, merged_data_B的列表
 
 module09_background_subtraction <- function(dir_config,
                                              sampleGroup,
@@ -46,72 +46,72 @@ module09_background_subtraction <- function(dir_config,
                                              tp_label = "SGs",
                                              tp_color = "#DB6968") {
   
-  cat("\n=== Module 09: Background Subtraction ===\n")
+  cat("\n=== Module 09: 背景扣除 ===\n")
   
-  # Load required packages
-  if (!require("dplyr")) stop("dplyr package is required")
-  if (!require("tidyr")) stop("tidyr package is required")
-  if (!require("purrr")) stop("purrr package is required")
-  if (!require("ggplot2")) stop("ggplot2 package is required")
-  if (!require("openxlsx")) stop("openxlsx package is required")
+  # 加载必要的包
+  if (!require("dplyr")) stop("需要安装dplyr包")
+  if (!require("tidyr")) stop("需要安装tidyr包")
+  if (!require("purrr")) stop("需要安装purrr包")
+  if (!require("ggplot2")) stop("需要安装ggplot2包")
+  if (!require("openxlsx")) stop("需要安装openxlsx包")
   
-  # Parameter validation
+  # 参数验证
   if (!use_roc_threshold && is.null(fixed_fc_threshold)) {
-    stop("If not using ROC threshold, fixed_fc_threshold must be provided")
+    stop("如果不使用ROC threshold，必须提供 fixed_fc_threshold")
   }
   
   if (!"Context" %in% colnames(sampleGroup)) {
-    stop("sampleGroup must contain Context column")
+    stop("sampleGroup必须包含Context列")
   }
   
-  # Determine versions to process
+  # 确定要处理的版本
   if (is.null(selected_versions)) {
     selected_versions <- names(diff_results)
   }
   
-  # Initialize result lists
-  filtered_data_A <- list()  # Method A results
-  filtered_data_B <- list()  # Method B results
-  merged_data_A <- list()    # Method A merged data
-  merged_data_B <- list()    # Method B merged data
+  # 初始化结果列表
+  filtered_data_A <- list()  # Method A结果
+  filtered_data_B <- list()  # Method B结果
+  merged_data_A <- list()    # Method A合并数据
+  merged_data_B <- list()    # Method B合并数据
   
-  # Process each version
+  # 对每个版本进行处理
   for (version in selected_versions) {
-    cat(sprintf("\nProcessing version: %s\n", version))
-    cat(sprintf("  FDR threshold: %.2f\n", fdr_threshold))
-    cat(sprintf("  Minimum valid LFQ: %d\n", min_valid_lfq))
+    cat(sprintf("\n处理版本: %s\n", version))
+    cat(sprintf("  FDR阈值: %.2f\n", fdr_threshold))
+    cat(sprintf("  最小有效LFQ: %d\n", min_valid_lfq))
     
     if (!version %in% names(diff_results)) {
-      cat(sprintf("  - Warning: version %s not found in diff_results, skipping\n", version))
+      cat(sprintf("  - 警告：版本 %s 不存在于diff_results中，跳过\n", version))
       next
     }
     
     if (!version %in% names(roc_thresholds)) {
-      cat(sprintf("  - Warning: version %s not found in roc_thresholds, skipping\n", version))
+      cat(sprintf("  - 警告：版本 %s 不存在于roc_thresholds中，跳过\n", version))
       next
     }
     
-    # Get data and thresholds
+    # 获取数据和阈值
     thresholds <- roc_thresholds[[version]]
     
-    # Data priority: Expr_FDR_df (Module 8) > SubMito transformation (Module 8) > Module 7 combined
+    # 数据优先级：Expr_FDR_df（Module 8） > SubMito转化（Module 8） > Module 7 combined
     if (!is.null(expr_fdr_df_list) && version %in% names(expr_fdr_df_list)) {
-      cat("  - Using Module 8 Expr_FDR_df (expression matrix + logFC/FDR + annotations)\n")
+      cat("  - 使用Module 8的Expr_FDR_df（表达矩阵 + logFC/FDR + 注释）\n")
       combined_data <- expr_fdr_df_list[[version]]
     } else if (!is.null(data_with_submito) && version %in% names(data_with_submito)) {
-      cat("  - Using Module 8 SubMito transformed data\n")
+      cat("  - 使用Module 8的SubMito转化数据\n")
       combined_data <- data_with_submito[[version]]
     } else {
-      cat("  - Note: Module 8 SubMito data not found, using Module 7 combined results\n")
+      cat("  - 提示：未找到Module 8的SubMito数据，使用Module 7的combined结果\n")
       combined_data <- diff_results[[version]]$combined
     }
     
     if (is.null(combined_data) || nrow(combined_data) == 0) {
-      cat("  - Warning: data is empty, skipping\n")
+      cat("  - 警告：数据为空，跳过\n")
       next
     }
     
-    # If Expr_FDR_df is not used, try to attach LFQ columns from ExprMatrix
+    # 若未使用Expr_FDR_df，则尝试附加ExprMatrix中的LFQ列
     if (is.null(expr_fdr_df_list) || !(version %in% names(expr_fdr_df_list))) {
       expr_matrix <- diff_results[[version]]$expr_matrix
       if (!is.null(expr_matrix) && "Gene" %in% colnames(expr_matrix)) {
@@ -123,20 +123,20 @@ module09_background_subtraction <- function(dir_config,
         if (ncol(expr_df) > 1) {
           combined_data <- combined_data %>%
             left_join(expr_df, by = "Gene")
-          cat(sprintf("  - Attached %d LFQ columns\n", ncol(expr_df) - 1))
+          cat(sprintf("  - 已附加 %d 个LFQ列\n", ncol(expr_df) - 1))
         } else {
-          cat("  - Warning: ExprMatrix did not provide matching LFQ columns\n")
+          cat("  - 警告：ExprMatrix未提供匹配的LFQ列\n")
         }
       } else {
-        cat("  - Warning: ExprMatrix not found, cannot attach LFQ columns\n")
+        cat("  - 警告：未找到ExprMatrix，无法附加LFQ列\n")
       }
     }
     
-    # Identify all bioGroups and their Context
+    # 识别所有bioGroup及其Context
     biogroups <- unique(sampleGroup$bioGroup)
-    cat(sprintf("  Found %d bioGroups\n", length(biogroups)))
+    cat(sprintf("  发现 %d 个bioGroup\n", length(biogroups)))
     
-    # Group bioGroups by Context (Experiment groups first, Spatial groups after)
+    # 按Context分组bioGroups（Experiment组在前，Spatial组在后）
     exp_groups <- c()
     spatial_groups <- c()
     control_groups <- c()
@@ -144,7 +144,7 @@ module09_background_subtraction <- function(dir_config,
     for (bg in biogroups) {
       bg_context <- unique(sampleGroup$Context[sampleGroup$bioGroup == bg])
       if (length(bg_context) > 1) {
-        cat(sprintf("  - Warning: bioGroup %s has multiple Contexts, using first: %s\n", bg, bg_context[1]))
+        cat(sprintf("  - 警告：bioGroup %s 有多个Context，使用第一个: %s\n", bg, bg_context[1]))
         bg_context <- bg_context[1]
       }
       
@@ -157,16 +157,16 @@ module09_background_subtraction <- function(dir_config,
       }
     }
     
-    cat(sprintf("  Experiment groups: %d\n", length(exp_groups)))
-    cat(sprintf("  Spatial groups: %d\n", length(spatial_groups)))
-    cat(sprintf("  Control groups: %d\n", length(control_groups)))
+    cat(sprintf("  Experiment组: %d 个\n", length(exp_groups)))
+    cat(sprintf("  Spatial组: %d 个\n", length(spatial_groups)))
+    cat(sprintf("  Control组: %d 个\n", length(control_groups)))
     
-    # ========== Method A: Some comparisons do not use FDR ==========
+    # ========== Method A：部分comparison不用FDR ==========
     cat("\n  === Method A ===\n")
     if (is.null(no_fdr_comparisons) || length(no_fdr_comparisons) == 0) {
-      cat("  - Note: no_fdr_comparisons not specified, Method A will be equivalent to Method B\n")
+      cat("  - 提示：no_fdr_comparisons未指定，Method A将等同于Method B\n")
     } else {
-      cat(sprintf("  - Comparisons without FDR filtering: %s\n", paste(no_fdr_comparisons, collapse=", ")))
+      cat(sprintf("  - 不使用FDR过滤的comparison: %s\n", paste(no_fdr_comparisons, collapse=", ")))
     }
     
     result_A <- process_one_method(
@@ -177,34 +177,34 @@ module09_background_subtraction <- function(dir_config,
       method_name = "A"
     )
     
-    # ========== Method B: All comparisons use FDR ==========
+    # ========== Method B：所有comparison都用FDR ==========
     cat("\n  === Method B ===\n")
-    cat("  - All comparisons use FDR filtering\n")
+    cat("  - 所有comparison都使用FDR过滤\n")
     
     result_B <- process_one_method(
       combined_data, thresholds, sampleGroup, comparison_info,
       exp_groups, spatial_groups, control_groups,
-      fdr_threshold, NULL,  # Method B does not specify no_fdr_comparisons
+      fdr_threshold, NULL,  # Method B不指定no_fdr_comparisons
       use_roc_threshold, fixed_fc_threshold, min_valid_lfq, annotation_column,
       method_name = "B"
     )
     
-    # Save results
+    # 保存结果
     filtered_data_A[[version]] <- result_A$filtered_list
     filtered_data_B[[version]] <- result_B$filtered_list
     merged_data_A[[version]] <- result_A$merged_data
     merged_data_B[[version]] <- result_B$merged_data
     
-    # Output Excel files
+    # 输出Excel文件
     output_results(result_A$filtered_list, version, "A", dir_config$output)
     output_results(result_B$filtered_list, version, "B", dir_config$output)
-    # Additional output: summarise and merged workbooks consistent with source code, sorted by group order
+    # 额外输出：与源码一致的 summarise 与 merged 工作簿，并按组顺序排序
     output_summarise_workbook(result_A$filtered_list, version, "A", dir_config$output, exp_groups, spatial_groups)
     output_summarise_workbook(result_B$filtered_list, version, "B", dir_config$output, exp_groups, spatial_groups)
     output_merged_workbook(result_A$merged_data, version, "A", dir_config$output)
     output_merged_workbook(result_B$merged_data, version, "B", dir_config$output)
     
-    # Plot stacked bar charts
+    # 绘制堆积条形图
     plot_stacked_bar(result_A$filtered_list, result_A$threshold_info,
                      version, "A", fdr_threshold, annotation_column,
                      plot_all_annotations, tp_label, tp_color, dir_config$output)
@@ -214,7 +214,7 @@ module09_background_subtraction <- function(dir_config,
                      plot_all_annotations, tp_label, tp_color, dir_config$output)
   }
   
-  cat("\n✓ Module 09 completed\n")
+  cat("\n✓ Module 09 完成\n")
   
   return(list(
     filtered_data_A = filtered_data_A,
@@ -225,9 +225,9 @@ module09_background_subtraction <- function(dir_config,
 }
 
 
-#' Process a single method (A or B)
+#' 处理单个方法（A或B）
 #'
-#' @return List containing filtered_list, merged_data, threshold_info
+#' @return 包含filtered_list, merged_data, threshold_info的列表
 
 process_one_method <- function(combined_data, thresholds, sampleGroup, comparison_info,
                                 exp_groups, spatial_groups, control_groups,
@@ -235,33 +235,33 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
                                 use_roc_threshold, fixed_fc_threshold, min_valid_lfq,
                                 annotation_column, method_name) {
   
-  filtered_list <- list()  # Store all filtered data and summaries
-  data_list <- list()      # Data list for merging (only filtered data)
-  threshold_info <- list() # Store threshold information used for each bioGroup
+  filtered_list <- list()  # 用于保存所有过滤后的数据和汇总
+  data_list <- list()      # 用于合并的数据列表（只包含过滤后的数据）
+  threshold_info <- list() # 保存每个bioGroup使用的阈值信息
   
-  # Process in order: Exp groups first, then Spatial groups
+  # 按顺序处理：先Exp组，再Spatial组
   all_groups <- c(exp_groups, spatial_groups)
   
   for (bg in all_groups) {
-    cat(sprintf("    Processing bioGroup: %s\n", bg))
+    cat(sprintf("    处理 bioGroup: %s\n", bg))
     
-    # Get Context information for this bioGroup
+    # 获取该bioGroup的Context信息
     bg_context <- unique(sampleGroup$Context[sampleGroup$bioGroup == bg])[1]
     
-    # Get LFQ column names corresponding to this bioGroup
+    # 获取该bioGroup对应的LFQ列名
     lfq_cols <- sampleGroup$FinalName[sampleGroup$bioGroup == bg]
     lfq_cols <- lfq_cols[lfq_cols %in% colnames(combined_data)]
     
     if (length(lfq_cols) == 0) {
-      cat(sprintf("      - Warning: no corresponding LFQ columns found, skipping\n"))
+      cat(sprintf("      - 警告：未找到对应的LFQ列，跳过\n"))
       next
     }
     
-    # If Spatial group, do not use threshold filtering
+    # 如果是Spatial组，不使用阈值过滤
     if (bg_context == "Spatial") {
-      cat(sprintf("      - Spatial group, no threshold filtering\n"))
+      cat(sprintf("      - Spatial组，不使用阈值过滤\n"))
       
-      # Select columns: Gene, LFQ columns, all annotation columns
+      # 选择列：Gene, LFQ列，所有注释列
       annotation_cols <- grep("_Localization$", colnames(combined_data), value = TRUE)
       select_cols <- c("Gene", lfq_cols, annotation_cols)
       select_cols <- select_cols[select_cols %in% colnames(combined_data)]
@@ -273,17 +273,17 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
       threshold_info[[bg]] <- "No threshold (Spatial)"
       
     } else if (bg_context == "Experiment") {
-      # Experiment group, apply threshold filtering
-      cat(sprintf("      - Experiment group, applying threshold filtering\n"))
+      # Experiment组，使用阈值过滤
+      cat(sprintf("      - Experiment组，应用阈值过滤\n"))
       
-      # Find comparisons involved in this bioGroup
+      # 找出该bioGroup涉及的comparisons
       bg_comparisons_idx <- vapply(comparison_info, function(comp) {
         comp$exp_group == bg
       }, logical(1))
       candidate_info <- comparison_info[bg_comparisons_idx]
       
       if (length(candidate_info) == 0) {
-        cat(sprintf("      - Warning: no corresponding comparison found, skipping\n"))
+        cat(sprintf("      - 警告：未找到对应的comparison，跳过\n"))
         next
       }
       
@@ -299,13 +299,13 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
       bg_comparisons <- bg_comparisons[!is.na(bg_comparisons)]
       
       if (length(bg_comparisons) == 0) {
-        cat(sprintf("      - Warning: no corresponding comparison found, skipping\n"))
+        cat(sprintf("      - 警告：未找到对应的comparison，跳过\n"))
         next
       }
       
-      cat(sprintf("      - Found %d comparisons\n", length(bg_comparisons)))
+      cat(sprintf("      - 找到 %d 个comparison\n", length(bg_comparisons)))
       
-      # Build filtering conditions
+      # 构建过滤条件
       filtered_data <- combined_data
       threshold_text <- c()
       
@@ -314,33 +314,33 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
         fdr_col <- paste0(comp, "_adj.P.Val")
         
         if (!logfc_col %in% colnames(filtered_data) || !fdr_col %in% colnames(filtered_data)) {
-          cat(sprintf("        - Warning: columns for comparison %s do not exist, skipping\n", comp))
+          cat(sprintf("        - 警告：comparison %s 的列不存在，跳过\n", comp))
           next
         }
         
-        # Determine threshold to use
+        # 确定使用的阈值
         if (use_roc_threshold) {
-          # Use ROC threshold
+          # 使用ROC threshold
           threshold <- thresholds[comp]
           if (is.na(threshold)) {
-            cat(sprintf("        - Warning: ROC threshold for comparison %s not found, skipping\n", comp))
+            cat(sprintf("        - 警告：未找到comparison %s 的ROC阈值，跳过\n", comp))
             next
           }
         } else {
-          # Use fixed FC threshold
+          # 使用固定FC阈值
           threshold <- fixed_fc_threshold
         }
         
-        # Determine FDR threshold
+        # 确定FDR阈值
         if (!is.null(no_fdr_comparisons) && comp %in% no_fdr_comparisons) {
-          fdr_cutoff <- 1  # Do not use FDR filtering
+          fdr_cutoff <- 1  # 不使用FDR过滤
           fdr_text <- "no FDR filter"
         } else {
           fdr_cutoff <- fdr_threshold
           fdr_text <- sprintf("FDR<%.2f", fdr_cutoff)
         }
         
-        # Apply filtering
+        # 应用过滤
         filtered_data <- filtered_data %>%
           filter(!!sym(logfc_col) > threshold,
                  !!sym(fdr_col) < fdr_cutoff)
@@ -349,7 +349,7 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
                             sprintf("%s: logFC>%.2f, %s", comp, threshold, fdr_text))
       }
       
-      # Select columns: Gene, LFQ columns, logFC/FDR columns, all annotation columns
+      # 选择列：Gene, LFQ列，logFC/FDR列，所有注释列
       annotation_cols <- grep("_Localization$", colnames(combined_data), value = TRUE)
       logfc_cols <- paste0(bg_comparisons, "_logFC")
       fdr_cols <- paste0(bg_comparisons, "_adj.P.Val")
@@ -359,7 +359,7 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
       filtered_data <- filtered_data %>%
         select(all_of(select_cols))
       
-      # Catalytic group valid value filtering (at least min_valid_lfq non-NA values in LFQ columns)
+      # 催化组有效值过滤（LFQ列中至少有min_valid_lfq个非NA值）
       if (length(lfq_cols) >= min_valid_lfq) {
         filtered_data <- filtered_data %>%
           filter(rowSums(!is.na(select(., all_of(lfq_cols)))) >= min_valid_lfq)
@@ -368,29 +368,29 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
       threshold_info[[bg]] <- paste(threshold_text, collapse = "; ")
       
     } else {
-      # Control group, no operation
-      cat(sprintf("      - Control group, skipping\n"))
+      # Control组，不操作
+      cat(sprintf("      - Control组，跳过\n"))
       next
     }
     
-    cat(sprintf("      - Retained %d proteins after filtering\n", nrow(filtered_data)))
+    cat(sprintf("      - 过滤后保留 %d 个蛋白\n", nrow(filtered_data)))
     
-    # Check minimum values (verify filtering success)
+    # 检查最小值（验证过滤是否成功）
     if (bg_context == "Experiment") {
       for (comp in bg_comparisons) {
         logfc_col <- paste0(comp, "_logFC")
         if (logfc_col %in% colnames(filtered_data)) {
           min_logfc <- min(filtered_data[[logfc_col]], na.rm = TRUE)
-          cat(sprintf("      - %s minimum logFC: %.2f\n", comp, min_logfc))
+          cat(sprintf("      - %s 最小logFC: %.2f\n", comp, min_logfc))
         }
       }
     }
     
-    # Save filtered data (data first)
+    # 保存过滤后的数据（先放数据）
     filtered_list[[bg]] <- filtered_data
     data_list[[bg]] <- filtered_data
     
-    # Generate statistical summary (grouped by annotation_column)
+    # 生成统计汇总（按annotation_column分组）
     if (annotation_column %in% colnames(filtered_data)) {
       summarise_data <- filtered_data %>%
         group_by(!!sym(annotation_column)) %>%
@@ -400,18 +400,18 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
             all_of(lfq_cols),
             list(
               mean = ~mean(.x, na.rm = TRUE),
-              sum = ~sum(2^.x, na.rm = TRUE)  # Convert back to linear space before summing
+              sum = ~sum(2^.x, na.rm = TRUE)  # 转回线性空间再求和
             ),
             .names = "{.col}_{.fn}"
           ),
           .groups = "drop"
         )
       
-      # Calculate percentage
+      # 计算百分比
       summarise_data <- summarise_data %>%
         mutate(Percent = count / sum(count))
       
-      # Calculate abundance percentage (sum percentage for each LFQ column, then average)
+      # 计算丰度百分比（每个LFQ列的sum百分比，然后取平均）
       sum_cols <- grep("_sum$", colnames(summarise_data), value = TRUE)
       if (length(sum_cols) > 0) {
         for (col in sum_cols) {
@@ -419,7 +419,7 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
           summarise_data[[percent_col]] <- summarise_data[[col]] / sum(summarise_data[[col]], na.rm = TRUE)
         }
         
-        # Calculate MeanSum (average of all sum_percent)
+        # 计算MeanSum（所有sum_percent的平均值）
         percent_cols <- grep("_sum_percent$", colnames(summarise_data), value = TRUE)
         if (length(percent_cols) > 0) {
           summarise_data <- summarise_data %>%
@@ -427,26 +427,26 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
         }
       }
       
-      # Save statistical summary (summary after)
+      # 保存统计汇总（后放汇总）
       summarise_name <- paste0(bg, "_Summarise")
       filtered_list[[summarise_name]] <- summarise_data
-      cat(sprintf("      - Generated statistical summary: %d groups\n", nrow(summarise_data)))
+      cat(sprintf("      - 生成统计汇总：%d 个分组\n", nrow(summarise_data)))
     }
   }
   
-  # Merge all filtered data (AfterROC_merged logic)
+  # 合并所有过滤后的数据（AfterROC_merged逻辑）
   merged_data <- NULL
   if (length(data_list) > 0) {
-    # Extract all annotation columns (from original combined_data)
+    # 提取所有注释列（从原始combined_data）
     annotation_cols <- grep("_Localization$", colnames(combined_data), value = TRUE)
     anno_data <- combined_data %>% 
       select(Gene, all_of(annotation_cols)) %>%
       distinct(Gene, .keep_all = TRUE)
     
-    # full_join merge all filtered data
+    # full_join合并所有过滤后的数据
     merged_data <- reduce(data_list, full_join, by = "Gene")
     
-    # Keep only Gene and LFQ columns
+    # 只保留Gene和LFQ列
     lfq_cols_all <- c()
     for (bg in names(data_list)) {
       bg_lfq <- sampleGroup$FinalName[sampleGroup$bioGroup == bg]
@@ -457,10 +457,10 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
     merged_data <- merged_data %>%
       select(Gene, all_of(lfq_cols_all))
     
-    # Add annotation columns
+    # 添加注释列
     merged_data <- left_join(merged_data, anno_data, by = "Gene")
     
-    cat(sprintf("    - Merged data: %d proteins, %d columns\n", nrow(merged_data), ncol(merged_data)))
+    cat(sprintf("    - 合并数据：%d 个蛋白, %d 列\n", nrow(merged_data), ncol(merged_data)))
   }
   
   return(list(
@@ -471,16 +471,16 @@ process_one_method <- function(combined_data, thresholds, sampleGroup, compariso
 }
 
 
-#' Output Excel file
+#' 输出Excel文件
 #'
-#' @param filtered_list Filtered data list (contains data and summaries)
-#' @param version Data version
-#' @param method Method name (A or B)
-#' @param output_dir Output directory
+#' @param filtered_list 过滤后的数据列表（包含数据和汇总）
+#' @param version 数据版本
+#' @param method 方法名称（A或B）
+#' @param output_dir 输出目录
 
 output_results <- function(filtered_list, version, method, output_dir) {
   if (length(filtered_list) == 0) {
-    cat(sprintf("    - Method %s: no data to output\n", method))
+    cat(sprintf("    - Method %s：没有数据输出\n", method))
     return(invisible(NULL))
   }
   
@@ -488,39 +488,39 @@ output_results <- function(filtered_list, version, method, output_dir) {
                            sprintf("Module09_%s_%s_FilteredData.xlsx", method, version))
   wb <- createWorkbook()
   
-  # In source code order: Exp group data and summaries first, then Spatial group data and summaries
+  # 按照源码顺序：先Exp组数据和汇总，再Spatial组数据和汇总
   for (name in names(filtered_list)) {
-    sheet_name <- substr(name, 1, 31)  # Excel limit
+    sheet_name <- substr(name, 1, 31)  # Excel限制
     addWorksheet(wb, sheetName = sheet_name)
     writeData(wb, sheet = sheet_name, filtered_list[[name]])
   }
   
   saveWorkbook(wb, output_xlsx, overwrite = TRUE)
-  cat(sprintf("    ✓ Method %s: saved %s\n", method, basename(output_xlsx)))
+  cat(sprintf("    ✓ Method %s: 已保存 %s\n", method, basename(output_xlsx)))
 }
 
 
-#' Additional output: Save Summarise workbook in Exp→Spatial, data→summary order
+#' 额外输出：按Exp→Spatial、数据→汇总顺序保存Summarise工作簿
 #'
-#' @param filtered_list Filtered data and summary list
-#' @param version Version
-#' @param method Method (A/B)
-#' @param output_dir Output directory
-#' @param exp_groups Experiment group bioGroup vector
-#' @param spatial_groups Spatial group bioGroup vector
+#' @param filtered_list 过滤后的数据与汇总列表
+#' @param version 版本
+#' @param method 方法（A/B）
+#' @param output_dir 输出目录
+#' @param exp_groups 实验组bioGroup向量
+#' @param spatial_groups 空间组bioGroup向量
 output_summarise_workbook <- function(filtered_list, version, method, output_dir, exp_groups, spatial_groups) {
   if (length(filtered_list) == 0) {
     return(invisible(NULL))
   }
   ordered_names <- c()
-  # 1) First all "data" sheets: Exp → Spatial
+  # 1) 先所有“数据”sheet：Exp → Spatial
   for (bg in exp_groups) {
     if (bg %in% names(filtered_list)) ordered_names <- c(ordered_names, bg)
   }
   for (bg in spatial_groups) {
     if (bg %in% names(filtered_list)) ordered_names <- c(ordered_names, bg)
   }
-  # 2) Then all "Summarise" sheets: Exp → Spatial
+  # 2) 再所有“Summarise”sheet：Exp → Spatial
   for (bg in exp_groups) {
     sum_name <- paste0(bg, "_Summarise")
     if (sum_name %in% names(filtered_list)) ordered_names <- c(ordered_names, sum_name)
@@ -529,7 +529,7 @@ output_summarise_workbook <- function(filtered_list, version, method, output_dir
     sum_name <- paste0(bg, "_Summarise")
     if (sum_name %in% names(filtered_list)) ordered_names <- c(ordered_names, sum_name)
   }
-  # Fallback: if any are missed, append remaining items
+  # 回退：若有遗漏，追加其余项
   remaining <- setdiff(names(filtered_list), ordered_names)
   ordered_names <- c(ordered_names, remaining)
   
@@ -542,16 +542,16 @@ output_summarise_workbook <- function(filtered_list, version, method, output_dir
     writeData(wb, sheet = sheet_name, filtered_list[[name]])
   }
   saveWorkbook(wb, output_xlsx, overwrite = TRUE)
-  cat(sprintf("    ✓ Method %s: saved %s\n", method, basename(output_xlsx)))
+  cat(sprintf("    ✓ Method %s: 已保存 %s\n", method, basename(output_xlsx)))
 }
 
 
-#' Additional output: Merged data workbook
+#' 额外输出：合并后的merged数据工作簿
 #'
-#' @param merged_data Merged data frame
-#' @param version Version
-#' @param method Method (A/B)
-#' @param output_dir Output directory
+#' @param merged_data 合并后的数据框
+#' @param version 版本
+#' @param method 方法（A/B）
+#' @param output_dir 输出目录
 output_merged_workbook <- function(merged_data, version, method, output_dir) {
   if (is.null(merged_data) || nrow(merged_data) == 0) {
     return(invisible(NULL))
@@ -562,36 +562,36 @@ output_merged_workbook <- function(merged_data, version, method, output_dir) {
   addWorksheet(wb, sheetName = substr(version, 1, 31))
   writeData(wb, sheet = substr(version, 1, 31), merged_data)
   saveWorkbook(wb, output_xlsx, overwrite = TRUE)
-  cat(sprintf("    ✓ Method %s: saved %s\n", method, basename(output_xlsx)))
+  cat(sprintf("    ✓ Method %s: 已保存 %s\n", method, basename(output_xlsx)))
 }
 
 
-#' Plot stacked bar chart
+#' 绘制堆积条形图
 #'
-#' @param filtered_list Filtered data list (contains summary data)
-#' @param threshold_info Threshold information list
-#' @param version Data version
-#' @param method Method name
-#' @param fdr_threshold FDR threshold
-#' @param annotation_column Annotation column name
-#' @param plot_all_annotations Whether to show all annotations
-#' @param tp_label TP label
-#' @param tp_color TP color
-#' @param output_dir Output directory
+#' @param filtered_list 过滤后的数据列表（包含汇总数据）
+#' @param threshold_info 阈值信息列表
+#' @param version 数据版本
+#' @param method 方法名称
+#' @param fdr_threshold FDR阈值
+#' @param annotation_column 注释列名
+#' @param plot_all_annotations 是否显示所有注释
+#' @param tp_label TP标签
+#' @param tp_color TP颜色
+#' @param output_dir 输出目录
 
 plot_stacked_bar <- function(filtered_list, threshold_info, version, method,
                              fdr_threshold, annotation_column,
                              plot_all_annotations, tp_label, tp_color, output_dir) {
   
-  # Extract summary data (names containing "_Summarise")
+  # 提取汇总数据（名称包含"_Summarise"的）
   summarise_names <- grep("_Summarise$", names(filtered_list), value = TRUE)
   
   if (length(summarise_names) == 0) {
-    cat(sprintf("    - Method %s: no summary data for plotting\n", method))
+    cat(sprintf("    - Method %s：没有汇总数据用于作图\n", method))
     return(invisible(NULL))
   }
   
-  # Prepare plotting data
+  # 准备作图数据
   plot_data_list <- list()
   
   for (name in summarise_names) {
@@ -602,7 +602,7 @@ plot_stacked_bar <- function(filtered_list, threshold_info, version, method,
       next
     }
     
-    # Add bioGroup column
+    # 添加bioGroup列
     data <- data %>%
       mutate(bioGroup = bg,
              bioGroup_factor = factor(bg, levels = sub("_Summarise$", "", summarise_names)))
@@ -611,26 +611,26 @@ plot_stacked_bar <- function(filtered_list, threshold_info, version, method,
   }
   
   if (length(plot_data_list) == 0) {
-    cat(sprintf("    - Method %s: no valid data for plotting\n", method))
+    cat(sprintf("    - Method %s：没有有效数据用于作图\n", method))
     return(invisible(NULL))
   }
   
-  # Merge data
+  # 合并数据
   merged_data <- bind_rows(plot_data_list)
   
-  # Prepare threshold text (for display above plot)
+  # 准备阈值文本（用于图上方显示）
   threshold_text <- sapply(names(threshold_info), function(bg) {
     paste0(bg, ": ", threshold_info[[bg]])
   })
   threshold_subtitle <- paste(threshold_text, collapse = "\n")
   
-  # Extract TP data (for annotation)
+  # 提取TP数据（用于标注）
   tp_data <- merged_data %>%
     filter(!!sym(annotation_column) == tp_label)
   
-  # Set colors
+  # 设置颜色
   if (plot_all_annotations) {
-    # Show all annotations, TP in red, others use color palette
+    # 显示所有注释，TP为红色，其他使用调色板
     all_annotations <- unique(merged_data[[annotation_column]])
     fill_levels <- c(tp_label, setdiff(all_annotations, tp_label))
     color_values <- setNames(
@@ -638,13 +638,13 @@ plot_stacked_bar <- function(filtered_list, threshold_info, version, method,
       fill_levels
     )
     
-    # Adjust factor order so TP is at bottom
+    # 调整因子顺序，使TP在底部
     merged_data[[annotation_column]] <- factor(
       merged_data[[annotation_column]],
       levels = fill_levels
     )
   } else {
-    # Only show TP, others in grey
+    # 只显示TP，其他为灰色
     all_annotations <- unique(merged_data[[annotation_column]])
     fill_levels <- c(tp_label, setdiff(all_annotations, tp_label))
     color_values <- setNames(
@@ -652,18 +652,18 @@ plot_stacked_bar <- function(filtered_list, threshold_info, version, method,
       fill_levels
     )
     
-    # Adjust factor order so TP is at bottom
+    # 调整因子顺序，使TP在底部
     merged_data[[annotation_column]] <- factor(
       merged_data[[annotation_column]],
       levels = fill_levels
     )
   }
   
-  # Explicit stacking order: TP at bottom (smaller order value is lower)
+  # 明确堆叠顺序：TP在底部（order越小越靠下）
   merged_data <- merged_data %>%
     mutate(.stack_order = ifelse(!!sym(annotation_column) == tp_label, 0L, 1L))
   
-  # Plot count percentage chart
+  # 绘制数量比例图
   output_file <- file.path(output_dir, 
                            sprintf("Module09_%s_%s_CountPercent_StackBar.pdf", 
                                    method, version))
@@ -699,9 +699,9 @@ plot_stacked_bar <- function(filtered_list, threshold_info, version, method,
   
   print(p)
   dev.off()
-  cat(sprintf("    ✓ Method %s: saved %s\n", method, basename(output_file)))
+  cat(sprintf("    ✓ Method %s: 已保存 %s\n", method, basename(output_file)))
   
-  # Plot abundance percentage chart (if MeanSum column exists)
+  # 绘制丰度比例图（如果有MeanSum列）
   if ("MeanSum" %in% colnames(merged_data)) {
     output_file <- file.path(output_dir, 
                              sprintf("Module09_%s_%s_AbundancePercent_StackBar.pdf", 
@@ -741,7 +741,7 @@ plot_stacked_bar <- function(filtered_list, threshold_info, version, method,
     
     print(p)
     dev.off()
-    cat(sprintf("    ✓ Method %s: saved %s\n", method, basename(output_file)))
+    cat(sprintf("    ✓ Method %s: 已保存 %s\n", method, basename(output_file)))
   }
   
   return(invisible(NULL))

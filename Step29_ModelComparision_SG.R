@@ -1,5 +1,5 @@
-#军科院 SGs 样品分析 
-#1.加载包 #### R4.1
+# Military Academy SGs Sample Analysis
+#1. Load Packages #### R4.1
 library(readr)
 library(tidyverse)
 library(readxl)
@@ -19,170 +19,133 @@ library(RColorBrewer)
 library(writexl)
 
 
-#2. 工作目录和数据加载 ####
-setwd("D:/Phase_APEX2/Raw_ForFigures/BioMap")
+#2. Working Directory and Data Loading ####
+setwd("D:/Bioinfomatics/MS/CodeNorm_Nuc_Batch1")
 #source("../202501017 3DAUC models base.R")
-##替换为任意一个能够完成主流程至FC/Scatter plot的环境中
-load("D:/Phase_APEX2/Raw_ForFigures/BioMap/ToStep21_all_data.RData") 
+## Replace with any environment that can complete the main pipeline to FC/Scatter plot
+load("D:/Bioinfomatics/MS/CodeNorm_Nuc_Batch1/Module14_workspace.RData") 
 
+str(ForStep16)
+names(ForStep16)
 
-names(ForStep21)
-
-names(ForStep21$noMBR_QNorm_New)
-
-#修改ForStep21列表中两个数据框的列名
-##为第2-16列在末尾数字前添加LFQ_前缀
-# 创建列名修改函数
-renameColumnsWithLFQ <- function(df) {
-  # 获取当前列名
-  col_names <- colnames(df)
-  # 对第2-16列进行重命名
-  for (i in 2:16) {
-    if (i <= length(col_names)) {
-      # 使用正则表达式在末尾数字前插入LFQ_
-      col_names[i] <- gsub("([a-zA-Z_]+)([0-9]+)$", "\\1LFQ_\\2", col_names[i])
-    }
-  }
-  colnames(df) <- col_names
-  return(df)
-}
-
-# 应用函数到ForStep21的所有数据框
-#for (i in seq_along(ForStep21)) {
-#  ForStep21[[i]] <- renameColumnsWithLFQ(ForStep21[[i]])
-#}
-
-str(ForStep21)
-
-## 分组结构
+## Group structure
 group_info <- list(
-  CD3EAP = list(
-    samples = c("CD3EAP_LFQ_1", "CD3EAP_LFQ_2"),
-    logFC  = "CD3EAP_vs_NLS_logFC",
-    logFC_FDR="CD3EAP_vs_NLS_adj.P.Val"
+  E7A2B4 = list(
+    samples = c("E7A2B4_Light_LFQ_1", "E7A2B4_Light_LFQ_2", "E7A2B4_Light_LFQ_3"),
+    logFC  = "E7A2B4_vs_K19_logFC",
+    logFC_FDR="E7A2B4_vs_K19_adj.P.Val"
   ),
-  NOP56 = list(
-    samples = c("NOP56_LFQ_1", "NOP56_LFQ_2"),
-    logFC  = "NOP56_vs_NLS_logFC",
-    logFC_FDR="NOP56_vs_NLS_adj.P.Val"
+  E7C2 = list(
+    samples = c("E7C2_Light_LFQ_1", "E7C2_Light_LFQ_2", "E7C2_Light_LFQ_3"),
+    logFC  = "E7C2_vs_K19_logFC",
+    logFC_FDR="E7C2_vs_K19_adj.P.Val"
   ),
-  NPM1 = list(
-    samples = c("NPM1_LFQ_1", "NPM1_LFQ_2"),
-    logFC  = "NPM1_vs_NLS_logFC",
-    logFC_FDR="NPM1_vs_NLS_adj.P.Val"
-  ),
-  POLR1E = list(
-    samples = c("POLR1E_LFQ_1", "POLR1E_LFQ_2"),
-    logFC  = "POLR1E_vs_NLS_logFC",
-    logFC_FDR="POLR1E_vs_NLS_adj.P.Val"
-  ),
-  ZNF330 = list(
-    samples = c("ZNF330_LFQ_1", "ZNF330_LFQ_2"),
-    logFC  = "ZNF330_vs_NLS_logFC",
-    logFC_FDR="ZNF330_vs_NLS_adj.P.Val"
+  C2 = list(
+    samples = c("C2_H2O2_LFQ_1", "C2_H2O2_LFQ_2", "C2_H2O2_LFQ_3"),
+    logFC  = "C2_vs_J37_logFC",
+    logFC_FDR="C2_vs_J37_adj.P.Val"
   )
 )
 
-ForStep21=ForStep21[c("noMBR_QNorm_New")]
-
-str(ForStep21)
-
-for (i in seq_along(ForStep21)) {
-  ForStep21[[i]]=ForStep21[[i]] %>% mutate(MultiBait_Localization=Sub_HPA_Localization)
+for (i in seq_along(ForStep16)) {
+  ForStep16[[i]]=ForStep16[[i]] %>% mutate(MultiBait_Localization=Sub_HPA_Localization)
 }
 
-str(ForStep21)
+str(ForStep16)
 
-unique(ForStep21$noMBR_QNorm_New$Sub_HPA_Localization)
+unique(ForStep16[[1]]$MultiBait_Localization)
 myTP_vector=c("Nucleolus","Other&Nucleolus","Nuclear&Nucleolus","Nuclear&Cytosol&Nucleolus","Cytosol&Nucleolus")
-myTP_vector %in% unique(ForStep21$noMBR_QNorm_New$Sub_HPA_Localization)
-ForStep19=ForStep21
+myTP_vector %in% unique(ForStep16[[1]]$MultiBait_Localization) # myTP_Vector needs to be redefined in the downstream process_group function as global variables cannot be inherited into that function
+ForStep19=ForStep16
 
-#Step29 多模型复杂需求 （Gemini版本）#####
+str(ForStep19)
+
+
+#Step29 Multi-Model Complex Requirements (Version) #####
 
 # ===================================================================
 #
-###    配置接口 - 用户可选设置 ####
+###    Configuration Interface - User Selectable Settings ####
 #
 # ===================================================================
 
-#1. 组别选择配置 ####
-## 可选组别：c("K69A1B3", "K69C3","C3")
-## 设置为NULL表示使用所有组别，或者指定特定组别的向量
+#1. Group Selection Configuration ####
+## Optional groups: c("K69A1B3", "K69C3","C3")
+## Set to NULL to use all groups, or specify a vector of specific groups
 names(group_info)
 selected_groups <- names(group_info)
 
 
-#2. 模型选择配置 ####
-## 可选模型类型：
-## 1D模型: "1D_Abundance", "1D_logFC", "1D_PPI_Global", "1D_PPI_Local"
-## 2D模型: "2D_Abundance_logFC", "2D_Abundance_PPI_Global", "2D_Abundance_PPI_Local", "2D_logFC_PPI_Global", "2D_logFC_PPI_Local"
-## 3D模型: "3D_with_Global_PPI", "3D_with_Local_PPI"
-## 传统方法: "logFC>0.5 & FDR<0.05"
-## 设置为NULL表示运行所有模型，或者指定特定模型的向量
+#2. Model Selection Configuration ####
+## Optional model types:
+## 1D models: "1D_Abundance", "1D_logFC", "1D_PPI_Global", "1D_PPI_Local"
+## 2D models: "2D_Abundance_logFC", "2D_Abundance_PPI_Global", "2D_Abundance_PPI_Local", "2D_logFC_PPI_Global", "2D_logFC_PPI_Local"
+## 3D models: "3D_with_Global_PPI", "3D_with_Local_PPI"
+## Traditional method: "logFC>0.5 & FDR<0.05"
+## Set to NULL to run all models, or specify a vector of specific models
 selected_models <- c(
   "logFC>0.5 & FDR<0.05",
   "1D_logFC",
   "1D_Abundance",
-  "2D_Abundance_logFC")  # 可选: c("1D_Abundance", "2D_Abundance_logFC") 等
+  "2D_Abundance_logFC")  # Optional: c("1D_Abundance", "2D_Abundance_logFC") etc.
 
 
-#3. 输出和可视化控制 ####
-## 是否生成各类文件和图表
-enable_cytoscape_export <- TRUE    # 是否导出Cytoscape文件
-enable_visualization <- TRUE       # 是否生成可视化图表
-enable_robustness_analysis <- TRUE # 是否进行稳健性分析
-enable_group_comparison <- TRUE    # 是否进行组间比较
+#3. Output and Visualization Control ####
+## Whether to generate various files and charts
+enable_cytoscape_export <- TRUE    # Whether to export Cytoscape files
+enable_visualization <- TRUE       # Whether to generate visualization charts
+enable_robustness_analysis <- TRUE # Whether to perform robustness analysis
+enable_group_comparison <- TRUE    # Whether to perform inter-group comparison
 
-## 可视化子图控制
-enable_plot_auc_summary <- TRUE                # 图1：AUC_summary分组森林图
-enable_plot_auc_summary_vs_logFC <- TRUE       # 图1b：与1D_logFC比较的分组森林图
-enable_plot_group_comparison <- TRUE           # 图2：跨邻近方法比较（柱状图+热图）
-enable_plot_intersection_dumbbell <- TRUE      # 图3：样本交集公平性哑铃图
-enable_plot_robustness_scatter <- TRUE         # 图4：性能-稳定性散点图
-enable_plot_controlled_comparison <- TRUE      # 图5：控制变量比较增益图
-enable_plot_localization_distribution <- FALSE  # 图6：候选蛋白定位分布堆叠柱状图
-enable_plot_controlled_comparison_vs_logFC <- TRUE  # 图7：与1D_logFC对比的控制变量增益图
+## Visualization subplot control
+enable_plot_auc_summary <- TRUE                # Figure 1: AUC_summary grouped forest plot
+enable_plot_auc_summary_vs_logFC <- TRUE       # Figure 1b: Grouped forest plot vs 1D_logFC
+enable_plot_group_comparison <- TRUE           # Figure 2: Cross-proximity method comparison (bar chart + heatmap)
+enable_plot_intersection_dumbbell <- TRUE      # Figure 3: Sample intersection fairness dumbbell plot
+enable_plot_robustness_scatter <- TRUE         # Figure 4: Performance-stability scatter plot
+enable_plot_controlled_comparison <- TRUE      # Figure 5: Controlled variable comparison gain plot
+enable_plot_localization_distribution <- FALSE  # Figure 6: Candidate protein localization distribution stacked bar chart
+enable_plot_controlled_comparison_vs_logFC <- TRUE  # Figure 7: Controlled variable gain plot vs 1D_logFC
 
-#4. 并行计算配置 ####
-## 并行核心数设置（建议保持12，总24核心中使用一半）
+#4. Parallel Computing Configuration ####
+## Parallel core number setting (recommended to keep 12, using half of 24 total cores)
 parallel_cores <- 20
 
-#4.1 控制变量比较图配置 ####
-## 图5a-5c：指定要展示的模型
+#4.1 Controlled Variable Comparison Plot Configuration ####
+## Figures 5a-5c: Specify models to display
 models_for_controlled_comparison <- c(
   "1D_Abundance",
   "1D_logFC", 
   "2D_Abundance_logFC"
-  # 传统模型会自动作为参考，无需在此列出
+  # Traditional model will automatically be used as reference, no need to list here
 )
 
-## 图5a-5c：坐标轴范围设置
-controlled_comparison_xlim <- c(-0.15, 0.5)  # Specificity/Sensitivity增益的x轴范围
-controlled_comparison_ylim <- c(-0.15, 0.5)  # Sensitivity增益的y轴范围（用于5c图）
+## Figures 5a-5c: Axis range settings
+controlled_comparison_xlim <- c(-0.15, 0.5)  # X-axis range for Specificity/Sensitivity gain
+controlled_comparison_ylim <- c(-0.15, 0.5)  # Y-axis range for Sensitivity gain (for figure 5c)
 
-## 图5a-5c：Bootstrap重采样次数设置
-n_bootstrap <- 500  # 可选: 200(快速测试), 500(常规), 1000(发表), 2000+(严格)
-                     # 注意: 1000次 × 6组 × 3模型 = 约36,000次重采样，需要较长时间
+## Figures 5a-5c: Bootstrap resampling count setting
+n_bootstrap <- 500  # Optional: 200(quick test), 500(routine), 1000(publication), 2000+(strict)
+                     # Note: 1000 times × 6 groups × 3 models = approximately 36,000 resamplings, requires longer time
 
-#5. 验证和初始化配置 ####
-cat("=== 配置验证开始 ===\n")
+#5. Validation and Initialization Configuration ####
+cat("=== Configuration Validation Started ===\n")
 
-# 验证组别选择
+# Validate group selection
 available_groups <- names(group_info)
 if (is.null(selected_groups)) {
   selected_groups <- available_groups
-  cat("✓ 使用所有可用组别:", paste(selected_groups, collapse = ", "), "\n")
+  cat("✓ Using all available groups:", paste(selected_groups, collapse = ", "), "\n")
 } else {
   invalid_groups <- setdiff(selected_groups, available_groups)
   if (length(invalid_groups) > 0) {
-    stop("❌ 错误：无效的组别选择 - ", paste(invalid_groups, collapse = ", "), 
-         "\n   可用组别：", paste(available_groups, collapse = ", "))
+    stop("❌ Error: Invalid group selection - ", paste(invalid_groups, collapse = ", "), 
+         "\n   Available groups: ", paste(available_groups, collapse = ", "))
   }
-  cat("✓ 已选择组别:", paste(selected_groups, collapse = ", "), "\n")
+  cat("✓ Selected groups:", paste(selected_groups, collapse = ", "), "\n")
 }
 
-# 验证模型选择
+# Validate model selection
 available_models <- c(
   "1D_Abundance", "1D_logFC", "1D_PPI_Global", "1D_PPI_Local",
   "2D_Abundance_logFC", "2D_Abundance_PPI_Global", "2D_Abundance_PPI_Local", 
@@ -191,61 +154,61 @@ available_models <- c(
   "logFC>0.5 & FDR<0.05"
 )
 if (is.null(selected_models)) {
-  selected_models <- setdiff(available_models, "logFC>0.5 & FDR<0.05")  # 默认排除传统方法
-  cat("✓ 使用所有可用模型（不含传统方法）:", length(selected_models), "个\n")
+  selected_models <- setdiff(available_models, "logFC>0.5 & FDR<0.05")  # Default: exclude traditional method
+  cat("✓ Using all available models (excluding traditional method):", length(selected_models), "models\n")
 } else {
   invalid_models <- setdiff(selected_models, available_models)
   if (length(invalid_models) > 0) {
-    stop("❌ 错误：无效的模型选择 - ", paste(invalid_models, collapse = ", "), 
-         "\n   可用模型：", paste(available_models, collapse = ", "))
+    stop("❌ Error: Invalid model selection - ", paste(invalid_models, collapse = ", "), 
+         "\n   Available models: ", paste(available_models, collapse = ", "))
   }
-  cat("✓ 已选择模型:", length(selected_models), "个 -", paste(selected_models, collapse = ", "), "\n")
+  cat("✓ Selected models:", length(selected_models), "models -", paste(selected_models, collapse = ", "), "\n")
 }
 
-# 验证控制变量比较配置
+# Validate controlled variable comparison configuration
 if (!is.null(models_for_controlled_comparison)) {
   invalid_cc_models <- setdiff(models_for_controlled_comparison, available_models)
   if (length(invalid_cc_models) > 0) {
-    warning("控制变量比较图配置中有无效模型: ", paste(invalid_cc_models, collapse = ", "))
+    warning("Invalid models in controlled variable comparison plot configuration: ", paste(invalid_cc_models, collapse = ", "))
     models_for_controlled_comparison <- intersect(models_for_controlled_comparison, available_models)
   }
-  cat("✓ 控制变量比较图展示模型:", paste(models_for_controlled_comparison, collapse = ", "), "\n")
-  cat("✓ 坐标轴范围 - X轴:", paste(controlled_comparison_xlim, collapse = " 至 "), "\n")
-  cat("✓ 坐标轴范围 - Y轴:", paste(controlled_comparison_ylim, collapse = " 至 "), "\n")
+  cat("✓ Models displayed in controlled variable comparison plot:", paste(models_for_controlled_comparison, collapse = ", "), "\n")
+  cat("✓ Axis range - X-axis:", paste(controlled_comparison_xlim, collapse = " to "), "\n")
+  cat("✓ Axis range - Y-axis:", paste(controlled_comparison_ylim, collapse = " to "), "\n")
   if (exists("n_bootstrap")) {
-    cat("✓ Bootstrap重采样次数:", n_bootstrap, "次\n")
+    cat("✓ Bootstrap resampling count:", n_bootstrap, "times\n")
   }
 }
 
-# 显示其他配置
-cat("✓ Cytoscape导出:", ifelse(enable_cytoscape_export, "启用", "禁用"), "\n")
-cat("✓ 可视化生成:", ifelse(enable_visualization, "启用", "禁用"), "\n")
+# Display other configurations
+cat("✓ Cytoscape export:", ifelse(enable_cytoscape_export, "Enabled", "Disabled"), "\n")
+cat("✓ Visualization generation:", ifelse(enable_visualization, "Enabled", "Disabled"), "\n")
 plot_toggle_status <- c(
-  "图1 AUC分组森林图" = enable_plot_auc_summary,
-  "图1b AUC vs 1D_logFC" = enable_plot_auc_summary_vs_logFC,
-  "图2 组间比较" = enable_plot_group_comparison,
-  "图3 样本交集哑铃图" = enable_plot_intersection_dumbbell,
-  "图4 性能-稳定性散点图" = enable_plot_robustness_scatter,
-  "图5 控制变量增益" = enable_plot_controlled_comparison,
-  "图6 候选蛋白定位分布" = enable_plot_localization_distribution,
-  "图7 控制变量增益 vs 1D_logFC" = enable_plot_controlled_comparison_vs_logFC
+  "Figure 1 AUC grouped forest plot" = enable_plot_auc_summary,
+  "Figure 1b AUC vs 1D_logFC" = enable_plot_auc_summary_vs_logFC,
+  "Figure 2 Inter-group comparison" = enable_plot_group_comparison,
+  "Figure 3 Sample intersection dumbbell plot" = enable_plot_intersection_dumbbell,
+  "Figure 4 Performance-stability scatter plot" = enable_plot_robustness_scatter,
+  "Figure 5 Controlled variable gain" = enable_plot_controlled_comparison,
+  "Figure 6 Candidate protein localization distribution" = enable_plot_localization_distribution,
+  "Figure 7 Controlled variable gain vs 1D_logFC" = enable_plot_controlled_comparison_vs_logFC
 )
-cat("  可视化子图控制:\n")
+cat("  Visualization subplot control:\n")
 for (toggle_name in names(plot_toggle_status)) {
-  cat("   -", toggle_name, ":", ifelse(plot_toggle_status[[toggle_name]], "启用", "禁用"), "\n")
+  cat("   -", toggle_name, ":", ifelse(plot_toggle_status[[toggle_name]], "Enabled", "Disabled"), "\n")
 }
-cat("✓ 稳健性分析:", ifelse(enable_robustness_analysis, "启用", "禁用"), "\n")
-cat("✓ 组间比较:", ifelse(enable_group_comparison, "启用", "禁用"), "\n")
-cat("✓ 并行核心数:", parallel_cores, "\n")
+cat("✓ Robustness analysis:", ifelse(enable_robustness_analysis, "Enabled", "Disabled"), "\n")
+cat("✓ Inter-group comparison:", ifelse(enable_group_comparison, "Enabled", "Disabled"), "\n")
+cat("✓ Parallel cores:", parallel_cores, "\n")
 
-cat("=== 配置验证完成 ===\n")
-cat("=== 使用说明 ===\n")
-cat("要修改配置，请编辑上述变量：\n")
-cat("1. selected_groups: 选择特定组别，如 c(\"E7A2B4\", \"C2\")\n")
-cat("2. selected_models: 选择特定模型，如 c(\"1D_Abundance\", \"2D_Abundance_logFC\")\n")
-cat("3. enable_* 变量: 控制是否生成特定类型的输出文件和图表\n")
-cat("4. parallel_cores: 调整并行计算的核心数\n")
-cat("=== 开始分析 ===\n\n")
+cat("=== Configuration Validation Completed ===\n")
+cat("=== Usage Instructions ===\n")
+cat("To modify configuration, edit the above variables:\n")
+cat("1. selected_groups: Select specific groups, e.g., c(\"E7A2B4\", \"C2\")\n")
+cat("2. selected_models: Select specific models, e.g., c(\"1D_Abundance\", \"2D_Abundance_logFC\")\n")
+cat("3. enable_* variables: Control whether to generate specific types of output files and charts\n")
+cat("4. parallel_cores: Adjust the number of cores for parallel computing\n")
+cat("=== Starting Analysis ===\n\n")
 
 # ===================================================================
 #
@@ -270,13 +233,13 @@ library(progressr)
 
 # Define a functional error handler as per your preference
 my_error_handler <- function(e) {
-  cat("错误发生:", conditionMessage(e), "\n")
+  cat("Error occurred:", conditionMessage(e), "\n")
 }
 
 # Setup parallel processing
 # Using 20 cores as requested
 plan(multisession, workers = 20)
-cat(paste("并行计算已启动，将使用", nbrOfWorkers(), "个核心。\n"))
+cat(paste("Parallel computing started, will use", nbrOfWorkers(), "cores.\n"))
 
 # --- Key Parameters ---
 # This parameter can be adjusted for the local PPI calculation
@@ -293,25 +256,25 @@ dir.create(file.path(output_dir, "Cytoscape_Files"), showWarnings = FALSE)
 # This section assumes 'ForStep19' and 'group_info' are loaded in your environment.
 
 # -------------------------------------------------------------------
-# 3. PPI Data Pre-processing (本地STRING数据库版本) ####
+# 3. PPI Data Pre-processing (Local STRING Database Version) ####
 # -------------------------------------------------------------------
-cat("开始预处理PPI数据（使用本地STRING文件）...\n")
+cat("Starting PPI data preprocessing (using local STRING files)...\n")
 
-# === 配置：本地STRING文件路径 ===
+# === Configuration: Local STRING file paths ===
 LOCAL_STRING_DIR <- file.path(getwd(), "Reference", "StringDb")
 LOCAL_STRING_ALIAS_FILE <- file.path(LOCAL_STRING_DIR, "9606.protein.aliases.v12.0.txt")
 LOCAL_STRING_LINKS_FILE <- file.path(LOCAL_STRING_DIR, "9606.protein.links.detailed.v12.0.txt")
-SCORE_THRESHOLD <- 400  # 与原在线版本一致
+SCORE_THRESHOLD <- 400  # Consistent with original online version
 
-# 验证文件路径
-cat(paste("STRING文件目录:", LOCAL_STRING_DIR, "\n"))
-cat(paste("别名文件:", LOCAL_STRING_ALIAS_FILE, "\n"))
-cat(paste("互作文件:", LOCAL_STRING_LINKS_FILE, "\n"))
+# Validate file paths
+cat(paste("STRING file directory:", LOCAL_STRING_DIR, "\n"))
+cat(paste("Alias file:", LOCAL_STRING_ALIAS_FILE, "\n"))
+cat(paste("Interaction file:", LOCAL_STRING_LINKS_FILE, "\n"))
 
-# === 步骤1：加载STRING别名映射表（只需加载一次）====
-cat("正在加载STRING别名映射表...\n")
+# === Step 1: Load STRING alias mapping table (only need to load once) ====
+cat("Loading STRING alias mapping table...\n")
 if (!file.exists(LOCAL_STRING_ALIAS_FILE)) {
-  stop(paste("错误：找不到映射文件", LOCAL_STRING_ALIAS_FILE))
+  stop(paste("Error: Mapping file not found", LOCAL_STRING_ALIAS_FILE))
 }
 
 string_aliases <- read_tsv(LOCAL_STRING_ALIAS_FILE, 
@@ -320,91 +283,91 @@ string_aliases <- read_tsv(LOCAL_STRING_ALIAS_FILE,
                            skip = 1,
                            show_col_types = FALSE)
 
-# 过滤出基因名来源的别名（保留多个来源以提高映射率）
+# Filter gene name source aliases (keep multiple sources to improve mapping rate)
 string_gene_map <- string_aliases %>%
   filter(source %in% c("BioMart_HUGO", "Ensembl_gene_name", "BLAST_UniProt_GN", 
                        "Ensembl_HGNC_UniProt_ID(supplied_by_UniProt)")) %>%
   select(STRING_id, gene = alias) %>%
   distinct()
 
-cat(paste("  ✅ 加载了", nrow(string_gene_map), "条基因映射记录\n"))
+cat(paste("  ✅ Loaded", nrow(string_gene_map), "gene mapping records\n"))
 
-# === 步骤2：加载STRING互作网络（只需加载一次）====
-cat("正在加载STRING互作网络...\n")
+# === Step 2: Load STRING interaction network (only need to load once) ====
+cat("Loading STRING interaction network...\n")
 if (!file.exists(LOCAL_STRING_LINKS_FILE)) {
-  stop(paste("错误：找不到互作文件", LOCAL_STRING_LINKS_FILE))
+  stop(paste("Error: Interaction file not found", LOCAL_STRING_LINKS_FILE))
 }
 
-# STRING文件使用空格分隔，需要明确指定
+# STRING files use space separation, need to specify explicitly
 string_links <- read.table(LOCAL_STRING_LINKS_FILE, 
-                           header = TRUE,           # 第一行是列名
-                           sep = " ",               # 空格分隔
+                           header = TRUE,           # First row is column names
+                           sep = " ",               # Space separated
                            stringsAsFactors = FALSE,
-                           comment.char = "",       # 不处理注释
-                           quote = "")              # 不处理引号
+                           comment.char = "",       # Don't process comments
+                           quote = "")              # Don't process quotes
 
-# 显示实际的列名以便调试
-cat(paste("  文件实际列名:", paste(colnames(string_links)[1:5], "..."), "\n"))
-cat(paste("  共", ncol(string_links), "列,", format(nrow(string_links), big.mark=","), "行\n"))
+# Display actual column names for debugging
+cat(paste("  File actual column names:", paste(colnames(string_links)[1:5], "..."), "\n"))
+cat(paste("  Total", ncol(string_links), "columns,", format(nrow(string_links), big.mark=","), "rows\n"))
 
-# 自动识别列名（STRING数据库可能使用不同的列名格式）
+# Automatically identify column names (STRING database may use different column name formats)
 col_names <- colnames(string_links)
 
-# 识别第一个蛋白列（通常是第1列）
+# Identify first protein column (usually column 1)
 protein1_col <- col_names[1]
-# 识别第二个蛋白列（通常是第2列）  
+# Identify second protein column (usually column 2)  
 protein2_col <- col_names[2]
-# 识别combined_score列（可能叫combined_score或其他名称）
+# Identify combined_score column (may be called combined_score or other names)
 score_cols <- col_names[grepl("combined", col_names, ignore.case = TRUE)]
 if (length(score_cols) == 0) {
-  # 如果没有combined列，尝试找score列
+  # If no combined column, try to find score column
   score_cols <- col_names[grepl("score", col_names, ignore.case = TRUE)]
   if (length(score_cols) == 0) {
-    stop("错误：在文件中找不到分数列")
+    stop("Error: Score column not found in file")
   }
 }
 score_col <- score_cols[1]
 
-cat(paste("  使用列: [", protein1_col, "] - [", protein2_col, "] - [", score_col, "]\n"))
+cat(paste("  Using columns: [", protein1_col, "] - [", protein2_col, "] - [", score_col, "]\n"))
 
-# 提取并重命名列
+# Extract and rename columns
 string_links <- string_links %>%
   select(protein1 = all_of(protein1_col), 
          protein2 = all_of(protein2_col), 
          combined_score = all_of(score_col)) %>%
   mutate(combined_score = as.numeric(combined_score))
 
-# 应用分数阈值过滤
+# Apply score threshold filtering
 string_links_filtered <- string_links %>%
   filter(combined_score >= SCORE_THRESHOLD)
 
-cat(paste("  ✅ 加载了", format(nrow(string_links_filtered), big.mark=","), 
-          "条互作记录（分数 ≥", SCORE_THRESHOLD, "）\n"))
+cat(paste("  ✅ Loaded", format(nrow(string_links_filtered), big.mark=","), 
+          "interaction records (score ≥", SCORE_THRESHOLD, ")\n"))
 
-# === 步骤3：为每个数据源处理PPI ====
+# === Step 3: Process PPI for each data source ====
 ppi_data <- list(dfs = ForStep19, interactions = list(), ppi_global = list())
 
 for(df_name in names(ForStep19)) {
-  cat(paste("正在处理数据源的PPI信息:", df_name, "\n"))
+  cat(paste("Processing PPI information for data source:", df_name, "\n"))
   
   tryCatch({
-    # 获取蛋白列表
+    # Get protein list
     protein_list <- unique(ForStep19[[df_name]]$Gene)
-    cat(paste("  - 数据源包含", length(protein_list), "个蛋白\n"))
+    cat(paste("  - Data source contains", length(protein_list), "proteins\n"))
     
-    # 映射基因名到STRING ID
+    # Map gene names to STRING IDs
     mapped_proteins <- string_gene_map %>%
       filter(gene %in% protein_list) %>%
       group_by(gene) %>%
-      slice(1) %>%  # 每个基因只保留第一个STRING ID
+      slice(1) %>%  # Keep only the first STRING ID for each gene
       ungroup()
     
     mapping_rate <- round(nrow(mapped_proteins) / length(protein_list) * 100, 1)
-    cat(paste("  - 成功映射", nrow(mapped_proteins), "/", length(protein_list), 
-              "个蛋白 (", mapping_rate, "%)\n"))
+    cat(paste("  - Successfully mapped", nrow(mapped_proteins), "/", length(protein_list), 
+              "proteins (", mapping_rate, "%)\n"))
     
     if (nrow(mapped_proteins) == 0) {
-      cat("  ⚠️  警告：没有蛋白被成功映射到STRING ID，跳过此数据源\n")
+      cat("  ⚠️  Warning: No proteins were successfully mapped to STRING IDs, skipping this data source\n")
       ppi_data$interactions[[df_name]] <- data.frame(
         protein1 = character(0), 
         protein2 = character(0), 
@@ -417,14 +380,14 @@ for(df_name in names(ForStep19)) {
       next
     }
     
-    # 筛选互作关系（只保留映射到的蛋白）
+    # Filter interactions (only keep mapped proteins)
     valid_ids <- mapped_proteins$STRING_id
     interactions_filtered <- string_links_filtered %>%
       filter(protein1 %in% valid_ids & protein2 %in% valid_ids)
     
-    # 将STRING ID转回基因名，并缩放分数到0-1
+    # Convert STRING IDs back to gene names and scale scores to 0-1
     ppi_data$interactions[[df_name]] <- interactions_filtered %>%
-      mutate(combined_score = combined_score / 1000) %>%  # 缩放到0-1
+      mutate(combined_score = combined_score / 1000) %>%  # Scale to 0-1
       left_join(mapped_proteins %>% select(STRING_id, gene), 
                 by = c("protein1" = "STRING_id"), 
                 relationship = "many-to-many") %>%
@@ -437,10 +400,10 @@ for(df_name in names(ForStep19)) {
       select(protein1 = protein1_gene, protein2 = protein2_gene, combined_score) %>%
       distinct()
     
-    cat(paste("  - 获得", format(nrow(ppi_data$interactions[[df_name]]), big.mark=","), 
-              "条互作关系\n"))
+    cat(paste("  - Obtained", format(nrow(ppi_data$interactions[[df_name]]), big.mark=","), 
+              "interaction relationships\n"))
     
-    # 计算全局PPI分数（每个蛋白的总互作强度）
+    # Calculate global PPI scores (total interaction strength for each protein)
     scores1 <- ppi_data$interactions[[df_name]] %>% 
       group_by(protein1) %>% 
       summarise(total_score = sum(combined_score)) %>% 
@@ -455,13 +418,13 @@ for(df_name in names(ForStep19)) {
       group_by(Gene) %>%
       summarise(ppi_score_global = sum(total_score))
     
-    cat(paste("  - 计算了", nrow(ppi_data$ppi_global[[df_name]]), 
-              "个蛋白的全局PPI分数\n"))
+    cat(paste("  - Calculated global PPI scores for", nrow(ppi_data$ppi_global[[df_name]]), 
+              "proteins\n"))
     
   }, error = my_error_handler)
 }
 
-cat("✅ PPI数据预处理完成（本地版本）。\n\n")
+cat("✅ PPI data preprocessing completed (local version).\n\n")
 
 
 # -------------------------------------------------------------------
@@ -661,7 +624,7 @@ process_group <- function(df_name, group, ppi_data) {
     }
 
     # --- Add Traditional and Control Methods to ROC objects list ---
-    # 只有在用户选择了传统方法时才计算
+    # Only calculate if user selected traditional method
     if ("logFC>0.5 & FDR<0.05" %in% selected_models) {
       # Handle NA values in logFC and FDR columns gracefully
       traditional_predictor <- ifelse(
@@ -726,51 +689,51 @@ process_group <- function(df_name, group, ppi_data) {
       mutate(p_value_vs_1D_logFC = p_values_vs_logFC)
 
     # --- New Analysis: Fixed Sensitivity/Specificity Comparison ---
-    # 控制变量比较：固定Sensitivity比较Specificity，或固定Specificity比较Sensitivity
+    # Controlled variable comparison: fix Sensitivity to compare Specificity, or fix Specificity to compare Sensitivity
     controlled_comparison_results <- NULL
     
     if (!is.null(traditional_roc)) {
-      # 获取传统方法的性能指标
+      # Get performance metrics of traditional method
       traditional_coords <- coords(traditional_roc, x = 1, input = "threshold", 
                                    ret = c("sensitivity", "specificity"))
       traditional_sens <- traditional_coords$sensitivity
       traditional_spec <- traditional_coords$specificity
       
-      # 对每个连续模型进行控制变量比较
+      # Perform controlled variable comparison for each continuous model
       controlled_comparison_list <- list()
       
       for (model_name in setdiff(names(roc_objects), c("logFC>0.5 & FDR<0.05", "Control"))) {
         model_roc <- roc_objects[[model_name]]
         
         tryCatch({
-          # 1. 固定Sensitivity，比较Specificity
-          # 在ROC曲线上找到最接近传统方法sensitivity的点
+          # 1. Fix Sensitivity, compare Specificity
+          # Find point on ROC curve closest to traditional method sensitivity
           model_coords_all <- coords(model_roc, x = "all", ret = c("threshold", "sensitivity", "specificity"))
           
-          # 找到最接近传统方法sensitivity的点
+          # Find point closest to traditional method sensitivity
           sens_diff <- abs(model_coords_all$sensitivity - traditional_sens)
           closest_sens_idx <- which.min(sens_diff)
           model_spec_at_fixed_sens <- model_coords_all$specificity[closest_sens_idx]
           actual_sens_used <- model_coords_all$sensitivity[closest_sens_idx]
           
-          # 2. 固定Specificity，比较Sensitivity
-          # 找到最接近传统方法specificity的点
+          # 2. Fix Specificity, compare Sensitivity
+          # Find point closest to traditional method specificity
           spec_diff <- abs(model_coords_all$specificity - traditional_spec)
           closest_spec_idx <- which.min(spec_diff)
           model_sens_at_fixed_spec <- model_coords_all$sensitivity[closest_spec_idx]
           actual_spec_used <- model_coords_all$specificity[closest_spec_idx]
           
-          # 计算增益
+          # Calculate gain
           specificity_gain <- model_spec_at_fixed_sens - traditional_spec
           sensitivity_gain <- model_sens_at_fixed_spec - traditional_sens
           
-          # 使用bootstrap方法计算置信区间和p值
+          # Use bootstrap method to calculate confidence intervals and p-values
           # Bootstrap for specificity comparison (fixed sensitivity)
           set.seed(123)
-          n_boot <- if(exists("n_bootstrap")) n_bootstrap else 1000  # 使用全局配置的bootstrap次数，默认1000
+          n_boot <- if(exists("n_bootstrap")) n_bootstrap else 1000  # Use globally configured bootstrap count, default 1000
           boot_spec_diff <- numeric(n_boot)
           
-          # 获取原始数据
+          # Get original data
           response_vec <- as.numeric(model_roc$response) - 1  # Convert to 0/1
           predictor_traditional <- as.numeric(traditional_roc$predictor)
           predictor_model <- as.numeric(model_roc$predictor)
@@ -813,8 +776,8 @@ process_group <- function(df_name, group, ppi_data) {
           # Calculate CI and p-value for specificity gain
           spec_gain_ci_lower <- quantile(boot_spec_diff, 0.025, na.rm = TRUE)
           spec_gain_ci_upper <- quantile(boot_spec_diff, 0.975, na.rm = TRUE)
-          # 使用保守的P值估计：(x+1)/(n+1)，避免P=0的歧义
-          # 这是Agresti-Coull调整的简化版本
+          # Use conservative P-value estimation: (x+1)/(n+1) to avoid ambiguity of P=0
+          # This is a simplified version of Agresti-Coull adjustment
           n_valid_boot <- sum(!is.na(boot_spec_diff))
           n_unfavorable <- sum(boot_spec_diff <= 0, na.rm = TRUE)
           spec_gain_p_value <- (n_unfavorable + 1) / (n_valid_boot + 1)
@@ -859,12 +822,12 @@ process_group <- function(df_name, group, ppi_data) {
           # Calculate CI and p-value for sensitivity gain
           sens_gain_ci_lower <- quantile(boot_sens_diff, 0.025, na.rm = TRUE)
           sens_gain_ci_upper <- quantile(boot_sens_diff, 0.975, na.rm = TRUE)
-          # 使用保守的P值估计：(x+1)/(n+1)，避免P=0的歧义
+          # Use conservative P-value estimation: (x+1)/(n+1) to avoid ambiguity of P=0
           n_valid_boot_sens <- sum(!is.na(boot_sens_diff))
           n_unfavorable_sens <- sum(boot_sens_diff <= 0, na.rm = TRUE)
           sens_gain_p_value <- (n_unfavorable_sens + 1) / (n_valid_boot_sens + 1)
           
-          # 存储结果
+          # Store results
           controlled_comparison_list[[model_name]] <- data.frame(
             ModelName = model_name,
             # Traditional method metrics
@@ -892,33 +855,33 @@ process_group <- function(df_name, group, ppi_data) {
         })
       }
       
-      # 合并所有模型的控制变量比较结果
+      # Combine controlled variable comparison results for all models
       if (length(controlled_comparison_list) > 0) {
         controlled_comparison_results <- bind_rows(controlled_comparison_list)
       }
     }
     
     # --- New Analysis: Comparison vs 1D_logFC Model (for Figure 7a-7c) ---
-    # 与1D_logFC模型的控制变量比较
+    # Controlled variable comparison vs 1D_logFC model
     controlled_comparison_vs_logFC <- NULL
     
     logFC_roc <- roc_objects[["1D_logFC"]]
     
     if (!is.null(logFC_roc)) {
-      # 获取1D_logFC模型在Youden最佳阈值下的性能指标
+      # Get performance metrics of 1D_logFC model at Youden optimal threshold
       logFC_best_coords <- coords(logFC_roc, "best", best.method = "youden", 
                                    ret = c("threshold", "sensitivity", "specificity"))
       logFC_sens <- logFC_best_coords$sensitivity
       logFC_spec <- logFC_best_coords$specificity
       
-      # 对每个其他连续模型进行控制变量比较
+      # Perform controlled variable comparison for each other continuous model
       controlled_comparison_vs_logFC_list <- list()
       
       for (model_name in setdiff(names(roc_objects), c("1D_logFC", "logFC>0.5 & FDR<0.05", "Control"))) {
         model_roc <- roc_objects[[model_name]]
         
         tryCatch({
-          # 1. 固定Sensitivity，比较Specificity
+          # 1. Fix Sensitivity, compare Specificity
           model_coords_all <- coords(model_roc, x = "all", ret = c("threshold", "sensitivity", "specificity"))
           
           sens_diff <- abs(model_coords_all$sensitivity - logFC_sens)
@@ -926,22 +889,22 @@ process_group <- function(df_name, group, ppi_data) {
           model_spec_at_fixed_sens <- model_coords_all$specificity[closest_sens_idx]
           actual_sens_used <- model_coords_all$sensitivity[closest_sens_idx]
           
-          # 2. 固定Specificity，比较Sensitivity
+          # 2. Fix Specificity, compare Sensitivity
           spec_diff <- abs(model_coords_all$specificity - logFC_spec)
           closest_spec_idx <- which.min(spec_diff)
           model_sens_at_fixed_spec <- model_coords_all$sensitivity[closest_spec_idx]
           actual_spec_used <- model_coords_all$specificity[closest_spec_idx]
           
-          # 计算增益
+          # Calculate gain
           specificity_gain <- model_spec_at_fixed_sens - logFC_spec
           sensitivity_gain <- model_sens_at_fixed_spec - logFC_sens
           
-          # 使用bootstrap方法计算置信区间和p值
+          # Use bootstrap method to calculate confidence intervals and p-values
           set.seed(123)
           n_boot <- if(exists("n_bootstrap")) n_bootstrap else 1000
           boot_spec_diff <- numeric(n_boot)
           
-          # 获取原始数据
+          # Get original data
           response_vec <- as.numeric(model_roc$response) - 1
           predictor_logFC <- as.numeric(logFC_roc$predictor)
           predictor_model <- as.numeric(model_roc$predictor)
@@ -982,7 +945,7 @@ process_group <- function(df_name, group, ppi_data) {
           
           spec_gain_ci_lower <- quantile(boot_spec_diff, 0.025, na.rm = TRUE)
           spec_gain_ci_upper <- quantile(boot_spec_diff, 0.975, na.rm = TRUE)
-          # 使用保守的P值估计：(x+1)/(n+1)
+          # Use conservative P-value estimation: (x+1)/(n+1)
           n_valid_boot <- sum(!is.na(boot_spec_diff))
           n_unfavorable <- sum(boot_spec_diff <= 0, na.rm = TRUE)
           spec_gain_p_value <- (n_unfavorable + 1) / (n_valid_boot + 1)
@@ -1023,12 +986,12 @@ process_group <- function(df_name, group, ppi_data) {
           
           sens_gain_ci_lower <- quantile(boot_sens_diff, 0.025, na.rm = TRUE)
           sens_gain_ci_upper <- quantile(boot_sens_diff, 0.975, na.rm = TRUE)
-          # 使用保守的P值估计：(x+1)/(n+1)
+          # Use conservative P-value estimation: (x+1)/(n+1)
           n_valid_boot_sens <- sum(!is.na(boot_sens_diff))
           n_unfavorable_sens <- sum(boot_sens_diff <= 0, na.rm = TRUE)
           sens_gain_p_value <- (n_unfavorable_sens + 1) / (n_valid_boot_sens + 1)
           
-          # 存储结果
+          # Store results
           controlled_comparison_vs_logFC_list[[model_name]] <- data.frame(
             ModelName = model_name,
             # 1D_logFC model metrics
@@ -1056,7 +1019,7 @@ process_group <- function(df_name, group, ppi_data) {
         })
       }
       
-      # 合并所有模型相对于1D_logFC的比较结果
+      # Combine comparison results for all models relative to 1D_logFC
       if (length(controlled_comparison_vs_logFC_list) > 0) {
         controlled_comparison_vs_logFC <- bind_rows(controlled_comparison_vs_logFC_list)
       }
@@ -1107,7 +1070,7 @@ process_group <- function(df_name, group, ppi_data) {
 # -------------------------------------------------------------------
 # 5. Execute Parallel Analysis
 # -------------------------------------------------------------------
-cat("开始执行所有组合的并行分析...\n")
+cat("Starting parallel analysis for all combinations...\n")
 
 # Enable progress bar tracking
 handlers(global = TRUE)
@@ -1136,7 +1099,7 @@ with_progress({
     # Update progress only if progressor is still active
     tryCatch({
       if (!is.null(p)) {
-        p(message = paste("已完成", df_name, "-", group))
+        p(message = paste("Completed", df_name, "-", group))
       }
     }, error = function(e) {
       # Silently ignore progress update errors - this is expected when progressor completes
@@ -1145,18 +1108,18 @@ with_progress({
     return(result)
   }, .options = furrr_options(seed = TRUE)) # Use seed for reproducibility
   
-  # 为all_results添加有意义的名称
+  # Add meaningful names to all_results
   names(all_results) <- paste(tasks$df_name, tasks$group, sep = "_")
 })
  
 
-cat("\n所有并行计算任务已完成。\n")
+cat("\nAll parallel computing tasks completed.\n")
 
 
 # -------------------------------------------------------------------
 # 6. Consolidate Results and Export Files
 # -------------------------------------------------------------------
-cat("正在汇总结果并导出文件...\n")
+cat("Consolidating results and exporting files...\n")
 
 # --- Consolidate AUC Summaries and Apply Multiple-Test Correction ---
 # Extract the auc_summary_df from each task result
@@ -1191,7 +1154,7 @@ for(i in seq_along(all_results)) {
   # Check for failed tasks
   if (is.null(result) || !is.list(result) || is.null(result$candidates_full_list)) {
     failed_task <- tasks_check[i, ]
-    warning(paste("任务", failed_task$df_name, "-", failed_task$group, "的结果不完整，部分导出文件可能缺失。"))
+    warning(paste("Task", failed_task$df_name, "-", failed_task$group, "results incomplete, some export files may be missing."))
     next
   }
   
@@ -1212,7 +1175,7 @@ for(i in seq_along(all_results)) {
     }
   }
   
-  # Export files for Cytoscape (如果启用)
+  # Export files for Cytoscape (if enabled)
   if (enable_cytoscape_export) {
     cytoscape_path_prefix <- file.path(output_dir, "Cytoscape_Files", paste0(df_name, "_", group))
     dir.create(dirname(cytoscape_path_prefix), recursive = TRUE, showWarnings = FALSE)
@@ -1244,10 +1207,10 @@ library("writexl")
 final_candidates_df <- bind_rows(final_candidates_list)
 writexl::write_xlsx(list(Candidates = final_candidates_df), path = file.path(output_dir, "detailed_candidates_by_model.xlsx"))
 
-cat("\n所有结果文件已成功导出到目录:", output_dir, "\n")
+cat("\nAll result files successfully exported to directory:", output_dir, "\n")
 
 # --- Consolidate and Export Controlled Comparison Results ---
-cat("\n正在汇总控制变量比较结果（固定Sensitivity/Specificity）...\n")
+cat("\nConsolidating controlled variable comparison results (fixed Sensitivity/Specificity)...\n")
 
 all_controlled_comparisons <- purrr::map_df(all_results, ~ {
   if (is.null(.x) || !is.list(.x) || is.null(.x$controlled_comparison)) {
@@ -1257,40 +1220,40 @@ all_controlled_comparisons <- purrr::map_df(all_results, ~ {
 }, .id = "Analysis_Group")
 
 if (nrow(all_controlled_comparisons) > 0) {
-  # 添加Df_Name列
+  # Add Df_Name column
   group_to_df_map_controlled <- purrr::map_df(all_results, ~tibble::tibble(Df_Name = .x$df_name), .id = "Analysis_Group") %>% dplyr::distinct()
   
   final_controlled_comparison <- all_controlled_comparisons %>%
     dplyr::left_join(group_to_df_map_controlled, by = "Analysis_Group") %>%
     select(Df_Name, Analysis_Group, everything()) %>%
-    # 应用BH多重检验校正
+    # Apply BH multiple testing correction
     group_by(Analysis_Group) %>%
     mutate(
       Specificity_Gain_Q_Value = p.adjust(Specificity_Gain_P_Value, method = "BH"),
       Sensitivity_Gain_Q_Value = p.adjust(Sensitivity_Gain_P_Value, method = "BH"),
-      # 添加P值理论下限说明（基于bootstrap次数）
+      # Add P-value theoretical lower limit note (based on bootstrap count)
       P_Value_Lower_Limit = 1 / (n_bootstrap + 1),
-      # 添加显著性标记
+      # Add significance markers
       Specificity_Significant = if_else(Specificity_Gain_Q_Value < 0.05, "Yes", "No"),
       Sensitivity_Significant = if_else(Sensitivity_Gain_Q_Value < 0.05, "Yes", "No")
     ) %>%
     ungroup()
   
-  # 导出到Excel
+  # Export to Excel
   writexl::write_xlsx(
     list(Controlled_Comparison = final_controlled_comparison), 
     path = file.path(output_dir, "Controlled_Variable_Comparison.xlsx")
   )
   
-  cat("控制变量比较结果已导出到 Controlled_Variable_Comparison.xlsx\n")
-  cat("  - 固定Sensitivity比较Specificity：", sum(!is.na(final_controlled_comparison$Specificity_Gain)), "个比较\n")
-  cat("  - 固定Specificity比较Sensitivity：", sum(!is.na(final_controlled_comparison$Sensitivity_Gain)), "个比较\n")
+  cat("Controlled variable comparison results exported to Controlled_Variable_Comparison.xlsx\n")
+  cat("  - Fixed Sensitivity comparison Specificity:", sum(!is.na(final_controlled_comparison$Specificity_Gain)), "comparisons\n")
+  cat("  - Fixed Specificity comparison Sensitivity:", sum(!is.na(final_controlled_comparison$Sensitivity_Gain)), "comparisons\n")
 } else {
-  cat("警告: 未能从分析结果中提取任何控制变量比较信息。\n")
+  cat("Warning: Could not extract any controlled variable comparison information from analysis results.\n")
 }
 
 # --- Consolidate and Export Controlled Comparison vs 1D_logFC Results ---
-cat("\n正在汇总与1D_logFC模型的控制变量比较结果...\n")
+cat("\nConsolidating controlled variable comparison results vs 1D_logFC model...\n")
 
 all_controlled_comparisons_vs_logFC <- purrr::map_df(all_results, ~ {
   if (is.null(.x) || !is.list(.x) || is.null(.x$controlled_comparison_vs_logFC)) {
@@ -1300,36 +1263,36 @@ all_controlled_comparisons_vs_logFC <- purrr::map_df(all_results, ~ {
 }, .id = "Analysis_Group")
 
 if (nrow(all_controlled_comparisons_vs_logFC) > 0) {
-  # 添加Df_Name列
+  # Add Df_Name column
   group_to_df_map_logFC <- purrr::map_df(all_results, ~tibble::tibble(Df_Name = .x$df_name), .id = "Analysis_Group") %>% dplyr::distinct()
   
   final_controlled_comparison_vs_logFC <- all_controlled_comparisons_vs_logFC %>%
     dplyr::left_join(group_to_df_map_logFC, by = "Analysis_Group") %>%
     select(Df_Name, Analysis_Group, everything()) %>%
-    # 应用BH多重检验校正
+    # Apply BH multiple testing correction
     group_by(Analysis_Group) %>%
     mutate(
       Specificity_Gain_Q_Value = p.adjust(Specificity_Gain_P_Value, method = "BH"),
       Sensitivity_Gain_Q_Value = p.adjust(Sensitivity_Gain_P_Value, method = "BH"),
-      # 添加P值理论下限说明（基于bootstrap次数）
+      # Add P-value theoretical lower limit note (based on bootstrap count)
       P_Value_Lower_Limit = 1 / (n_bootstrap + 1),
-      # 添加显著性标记
+      # Add significance markers
       Specificity_Significant = if_else(Specificity_Gain_Q_Value < 0.05, "Yes", "No"),
       Sensitivity_Significant = if_else(Sensitivity_Gain_Q_Value < 0.05, "Yes", "No")
     ) %>%
     ungroup()
   
-  # 导出到Excel
+  # Export to Excel
   writexl::write_xlsx(
     list(Controlled_Comparison_vs_1D_logFC = final_controlled_comparison_vs_logFC), 
     path = file.path(output_dir, "Controlled_Variable_Comparison_vs_1D_logFC.xlsx")
   )
   
-  cat("与1D_logFC模型的控制变量比较结果已导出到 Controlled_Variable_Comparison_vs_1D_logFC.xlsx\n")
-  cat("  - 固定Sensitivity比较Specificity：", sum(!is.na(final_controlled_comparison_vs_logFC$Specificity_Gain)), "个比较\n")
-  cat("  - 固定Specificity比较Sensitivity：", sum(!is.na(final_controlled_comparison_vs_logFC$Sensitivity_Gain)), "个比较\n")
+  cat("Controlled variable comparison results vs 1D_logFC model exported to Controlled_Variable_Comparison_vs_1D_logFC.xlsx\n")
+  cat("  - Fixed Sensitivity comparison Specificity:", sum(!is.na(final_controlled_comparison_vs_logFC$Specificity_Gain)), "comparisons\n")
+  cat("  - Fixed Specificity comparison Sensitivity:", sum(!is.na(final_controlled_comparison_vs_logFC$Sensitivity_Gain)), "comparisons\n")
 } else {
-  cat("警告: 未能从分析结果中提取任何与1D_logFC的控制变量比较信息。\n")
+  cat("Warning: Could not extract any controlled variable comparison information vs 1D_logFC from analysis results.\n")
 }
 
 
@@ -1339,10 +1302,10 @@ if (nrow(all_controlled_comparisons_vs_logFC) > 0) {
 #
 # ===================================================================
 
-cat("\n\n--- 开始执行 Phase 1.1: 数据导出与稳健性检验 ---\n")
+cat("\n\n--- Starting Phase 1.1: Data Export and Robustness Testing ---\n")
 
 # --- 0. Consolidate, Correct, and Export All Model AUCs ---
-cat("\n--- 正在汇总、校正并导出所有模型的AUC结果... ---\n")
+cat("\n--- Consolidating, correcting, and exporting AUC results for all models... ---\n")
 
 # Extract the auc_summary dataframe from each result, adding the group name
 all_auc_summaries_raw <- purrr::map_dfr(all_results, ~ .x$auc_summary_df, .id = "Analysis_Group")
@@ -1354,14 +1317,14 @@ group_to_df_map <- purrr::map_df(all_results, ~tibble::tibble(Df_Name = .x$df_na
 # Check if the summary data frame is not empty
 if (nrow(all_auc_summaries_raw) > 0) {
   
-  # 检测是否为单次比较情况
+  # Detect whether it's a single comparison case
   total_comparisons <- length(selected_groups) * length(setdiff(selected_models, "Control"))
   single_comparison_flag <- (total_comparisons == 1)
   
   if (single_comparison_flag) {
-    cat("✓ 检测到单次比较情况 - 只有1个组别使用1个模型，p值无需多重检验校正\n")
+    cat("✓ Detected single comparison case - only 1 group using 1 model, p-values don't need multiple testing correction\n")
   } else {
-    cat("✓ 检测到多次比较情况 - 共", total_comparisons, "次比较，将应用BH多重检验校正\n")
+    cat("✓ Detected multiple comparison case - total", total_comparisons, "comparisons, will apply BH multiple testing correction\n")
   }
   
   # Apply BH correction to p-values within each analysis group to get q-values
@@ -1370,10 +1333,10 @@ if (nrow(all_auc_summaries_raw) > 0) {
     group_by(Analysis_Group) %>% 
     mutate(
       q_value_vs_traditional = if (single_comparison_flag) {
-        # 单次比较时，q值等于p值
+        # For single comparison, q-value equals p-value
         p_value_vs_traditional
       } else {
-        # 多次比较时，应用BH校正
+        # For multiple comparisons, apply BH correction
         p.adjust(p_value_vs_traditional, method = "BH")
       }
     ) %>%
@@ -1382,31 +1345,31 @@ if (nrow(all_auc_summaries_raw) > 0) {
     dplyr::left_join(group_to_df_map, by = "Analysis_Group") %>%
     # Reorder columns for clarity, bringing Df_Name to the front
     select(Df_Name, Analysis_Group, ModelName, AUC, AUC_Lower_CI, AUC_Upper_CI, p_value_vs_traditional, q_value_vs_traditional, everything()) %>%
-    # 添加标记列表示是否为单次比较
+    # Add marker column indicating whether it's a single comparison
     mutate(single_comparison = single_comparison_flag)
 
   # Export the final, corrected summary to its own Excel file
   auc_summary_path <- file.path(output_dir, "AUC_summary.xlsx")
   writexl::write_xlsx(list("AUC_Summary" = final_auc_summary), path = auc_summary_path)
-  cat("所有模型的AUC汇总结果（已进行多重检验校正）已导出到 AUC_summary.xlsx\n")
+  cat("All model AUC summary results (with multiple testing correction) exported to AUC_summary.xlsx\n")
   
   # --- Export AUC Summary with comparison to 1D_logFC (for Figure 1b) ---
-  cat("\n--- 正在创建与1D_logFC比较的AUC汇总结果... ---\n")
+  cat("\n--- Creating AUC summary results compared to 1D_logFC... ---\n")
   
-  # 检查是否有p_value_vs_1D_logFC列
+  # Check if p_value_vs_1D_logFC column exists
   if ("p_value_vs_1D_logFC" %in% names(final_auc_summary)) {
     
-    # 创建针对1D_logFC比较的汇总表
+    # Create summary table for 1D_logFC comparison
     final_auc_summary_b <- final_auc_summary %>%
-      # 只保留与1D_logFC比较相关的列
+      # Keep only columns related to 1D_logFC comparison
       select(Df_Name, Analysis_Group, ModelName, AUC, AUC_Lower_CI, AUC_Upper_CI, p_value_vs_1D_logFC) %>%
-      # 过滤掉1D_logFC自己和Control
+      # Filter out 1D_logFC itself and Control
       filter(!ModelName %in% c("1D_logFC", "Control")) %>%
-      # 应用BH校正到vs 1D_logFC的p值
+      # Apply BH correction to p-values vs 1D_logFC
       group_by(Analysis_Group) %>%
       mutate(
         q_value_vs_1D_logFC = p.adjust(p_value_vs_1D_logFC, method = "BH"),
-        # 添加显著性标记
+        # Add significance marker
         is_significant_vs_1D_logFC = if_else(
           !is.na(q_value_vs_1D_logFC) & q_value_vs_1D_logFC < 0.05,
           "Yes",
@@ -1414,27 +1377,27 @@ if (nrow(all_auc_summaries_raw) > 0) {
         )
       ) %>%
       ungroup() %>%
-      # 重新排列列顺序
+      # Reorder columns
       select(Df_Name, Analysis_Group, ModelName, AUC, AUC_Lower_CI, AUC_Upper_CI, 
              p_value_vs_1D_logFC, q_value_vs_1D_logFC, is_significant_vs_1D_logFC, everything())
     
-    # 导出AUC_Summary_b
+    # Export AUC_Summary_b
     auc_summary_b_path <- file.path(output_dir, "AUC_Summary_b.xlsx")
     writexl::write_xlsx(list("AUC_Summary_vs_1D_logFC" = final_auc_summary_b), path = auc_summary_b_path)
-    cat("与1D_logFC模型比较的AUC汇总结果已导出到 AUC_Summary_b.xlsx\n")
+    cat("AUC summary results compared to 1D_logFC model exported to AUC_Summary_b.xlsx\n")
     
   } else {
-    cat("警告: 未找到 p_value_vs_1D_logFC 列，跳过 AUC_Summary_b.xlsx 的生成。\n")
+    cat("Warning: p_value_vs_1D_logFC column not found, skipping AUC_Summary_b.xlsx generation.\n")
   }
   
 } else {
-  cat("警告: 未能从分析结果中提取任何AUC摘要信息，跳过 AUC_summary.xlsx 的生成。\n")
+  cat("Warning: Could not extract any AUC summary information from analysis results, skipping AUC_summary.xlsx generation.\n")
 }
 
 
 # --- 1. Type 2 Robustness (Model Stability) Analysis ---
 if (enable_robustness_analysis) {
-  cat("\n执行第二类稳健性分析（模型稳定性）...\n")
+  cat("\nExecuting Type 2 robustness analysis (model stability)...\n")
 
   # Calculate Mean and StdDev of AUCs for each group across all models
   # This now uses the `final_auc_summary` table which contains q-values
@@ -1456,15 +1419,15 @@ if (enable_robustness_analysis) {
     path = file.path(output_dir, "Group_Robustness_Summary.xlsx")
   )
 
-  cat("\n模型稳定性结果已导出到 Group_Robustness_Summary.xlsx\n")
+  cat("\nModel stability results exported to Group_Robustness_Summary.xlsx\n")
 } else {
-  cat("\n稳健性分析已禁用，跳过相关计算。\n")
+  cat("\nRobustness analysis disabled, skipping related calculations.\n")
 }
 
 
 # --- New Section: Cross-Group (Inter-Method) Comparison ---
 if (enable_group_comparison) {
-  cat("\n开始执行跨邻近方法比较分析...\n")
+  cat("\nStarting cross-proximity method comparison analysis...\n")
 
 # Define the baseline model for this comparison
 baseline_model_for_comparison <- "2D_Abundance_logFC"
@@ -1537,10 +1500,10 @@ for (df_name in names(results_by_df)) {
   p_values_long <- p_values_long_temp %>%
     mutate(
       q_value = if (nrow(p_values_long_temp) == 1) {
-        # 单次组间比较时，q值等于p值
+        # For a single group comparison, q_value equals p_value
         p_value
       } else {
-        # 多次组间比较时，应用BH校正
+        # For multiple group comparisons, apply BH correction
         p.adjust(p_value, method = "BH")
       },
       single_group_comparison = (nrow(p_values_long_temp) == 1)
@@ -1569,18 +1532,18 @@ if (length(all_group_comparisons) > 0) {
   export_list_group_comp <- c(export_list_group_comp, pairwise_sheets)
   
   writexl::write_xlsx(export_list_group_comp, path = file.path(output_dir, "Group_Comparison_Summary.xlsx"))
-  cat("\n跨邻近方法比较结果已导出到 Group_Comparison_Summary.xlsx\n")
+  cat("\nCross-proximity method comparison results exported to Group_Comparison_Summary.xlsx\n")
 } else {
-  cat("\n未能生成任何跨邻近方法比较结果。\n")
+  cat("\nCould not generate any cross-proximity method comparison results.\n")
 }
 
 } else {
-  cat("\n组间比较分析已禁用，跳过相关计算。\n")
+  cat("\nInter-group comparison analysis disabled, skipping related calculations.\n")
 }
 
 # --- New Section: Type 1 Robustness (Sample Intersection Fairness) Analysis ---
 if (enable_robustness_analysis) {
-  cat("\n开始执行第一类稳健性分析（样本交集公平性）...\n")
+  cat("\nStarting Type 1 robustness analysis (sample intersection fairness)...\n")
 
 # Define the baseline model again for clarity
 baseline_model_for_intersection <- "2D_Abundance_logFC"
@@ -1598,7 +1561,7 @@ for (df_name in names(results_by_df)) {
   
   intersecting_proteins <- Reduce(intersect, list_of_protein_ids)
   
-  cat(paste("\n对于", df_name, "，找到", length(intersecting_proteins), "个所有组共有的蛋白用于交集分析。\n"))
+  cat(paste("\nFor", df_name, ", found", length(intersecting_proteins), "proteins common to all groups for intersection analysis.\n"))
   
   if (length(intersecting_proteins) < 20) { # Heuristic check
       warning(paste("Skipping intersection analysis for", df_name, "due to very small protein intersection (", length(intersecting_proteins), ")"))
@@ -1698,13 +1661,13 @@ if (length(all_intersection_comparisons) > 0) {
   export_list_intersect <- c(export_list_intersect, pairwise_sheets_intersect)
   
   writexl::write_xlsx(export_list_intersect, path = file.path(output_dir, "Group_Comparison_Intersection_Summary.xlsx"))
-  cat("\n样本交集公平性分析结果已导出到 Group_Comparison_Intersection_Summary.xlsx\n")
+  cat("\nSample intersection fairness analysis results exported to Group_Comparison_Intersection_Summary.xlsx\n")
 } else {
-  cat("\n未能生成任何样本交集公平性分析结果。\n")
+  cat("\nCould not generate any sample intersection fairness analysis results.\n")
 }
 
 } else {
-  cat("\n稳健性分析已禁用，跳过样本交集公平性分析。\n")
+  cat("\nRobustness analysis disabled, skipping sample intersection fairness analysis.\n")
 }
 
 # ===================================================================
@@ -1714,7 +1677,7 @@ if (length(all_intersection_comparisons) > 0) {
 # ===================================================================
 
 if (enable_visualization) {
-  cat("\n\n--- 开始执行 Phase 1.2: 结果可视化 ---\n")
+  cat("\n\n--- Starting Phase 1.2: Result Visualization ---\n")
 
   # To prevent the analysis in this section from accidentally modifying the original
   # `all_results` and `group_info` objects, which are needed for Phase 2
@@ -1729,7 +1692,7 @@ dir.create(plots_dir, showWarnings = FALSE)
 
 # --- 1. Visualization for AUC_summary.xlsx: Faceted Forest Plot ---
 if (enable_plot_auc_summary) {
-  cat("\n正在为 AUC_summary.xlsx 创建分组森林图...\n")
+  cat("\nCreating grouped forest plot for AUC_summary.xlsx...\n")
 
   # Check if the final summary data frame exists and is not empty
   if (exists("final_auc_summary") && nrow(final_auc_summary) > 0) {
@@ -1793,19 +1756,19 @@ if (enable_plot_auc_summary) {
       bg = "white"
     )
 
-    cat("分组森林图已保存到:", file.path(plots_dir, "1_AUC_Faceted_Forest_Plot.pdf"), "\n")
+    cat("Grouped forest plot saved to:", file.path(plots_dir, "1_AUC_Faceted_Forest_Plot.pdf"), "\n")
 
   } else {
-    cat("警告: 未找到 AUC_summary.xlsx，跳过分组森林图的生成。\n")
+    cat("Warning: AUC_summary.xlsx not found, skipping grouped forest plot generation.\n")
   }
 } else {
-  cat("\nAUC_summary分组森林图生成已禁用，跳过该图表。\n")
+  cat("\nAUC_summary grouped forest plot generation disabled, skipping this plot.\n")
 }
 
 
 # --- 1b. Visualization for AUC_Summary_b.xlsx: Faceted Forest Plot vs 1D_logFC ---
 if (enable_plot_auc_summary_vs_logFC) {
-  cat("\n正在为 AUC_Summary_b.xlsx 创建分组森林图（vs 1D_logFC）...\n")
+  cat("\nCreating grouped forest plot (vs 1D_logFC) for AUC_Summary_b.xlsx...\n")
 
   # Check if the AUC_Summary_b data exists
   auc_summary_b_path <- file.path(output_dir, "AUC_Summary_b.xlsx")
@@ -1815,7 +1778,7 @@ if (enable_plot_auc_summary_vs_logFC) {
     if (nrow(auc_summary_b_data) > 0) {
       
       # Prepare data for plotting
-      # 首先创建1D_logFC的AUC参考表
+      # First create 1D_logFC AUC reference table
       logFC_auc_reference <- final_auc_summary %>%
         filter(ModelName == "1D_logFC") %>%
         select(Analysis_Group, logFC_auc = AUC)
@@ -1874,23 +1837,23 @@ if (enable_plot_auc_summary_vs_logFC) {
         bg = "white"
       )
       
-      cat("与1D_logFC比较的分组森林图已保存到:", file.path(plots_dir, "1b_AUC_Faceted_Forest_Plot_vs_1D_logFC.pdf"), "\n")
+      cat("Grouped forest plot vs 1D_logFC saved to:", file.path(plots_dir, "1b_AUC_Faceted_Forest_Plot_vs_1D_logFC.pdf"), "\n")
       
     } else {
-      cat("警告: AUC_Summary_b.xlsx 为空，跳过图1b的生成。\n")
+      cat("Warning: AUC_Summary_b.xlsx is empty, skipping figure 1b generation.\n")
     }
   } else {
-    cat("警告: 未找到 AUC_Summary_b.xlsx，跳过图1b的生成。\n")
+    cat("Warning: AUC_Summary_b.xlsx not found, skipping figure 1b generation.\n")
   }
 } else {
-  cat("\n与1D_logFC比较的分组森林图生成已禁用，跳过该图表。\n")
+  cat("\nGrouped forest plot vs 1D_logFC generation disabled, skipping this plot.\n")
 }
 
 
 # --- 2. Visualization for Group_Comparison_Summary.xlsx: Bar Plots and Heatmaps ---
 group_comp_path <- file.path(output_dir, "Group_Comparison_Summary.xlsx")
 if (enable_plot_group_comparison) {
-  cat("\n正在为 Group_Comparison_Summary.xlsx 创建可视化图表...\n")
+  cat("\nCreating visualization plots for Group_Comparison_Summary.xlsx...\n")
 
   if (file.exists(group_comp_path)) {
     
@@ -1901,7 +1864,7 @@ if (enable_plot_group_comparison) {
     base_names <- unique(sub("^(C_AUC_|C_PVal_)", "", sheet_names))
 
     for (base_name in base_names) {
-      cat(paste("  - 正在处理组比较:", base_name, "\n"))
+      cat(paste("  - Processing group comparison:", base_name, "\n"))
       
       auc_sheet_name <- paste0("C_AUC_", base_name)
       pval_sheet_name <- paste0("C_PVal_", base_name)
@@ -1911,13 +1874,13 @@ if (enable_plot_group_comparison) {
         auc_data <- readxl::read_excel(group_comp_path, sheet = auc_sheet_name)
         
         if (nrow(auc_data) > 0) {
-          # 按照selected_groups的顺序排列，确保只包含实际存在的组别
+          # Order according to selected_groups, ensuring only actual existing groups are included
           groups_from_data <- unique(auc_data$GroupName)
           ordered_groups <- intersect(selected_groups, groups_from_data)
           missing_groups <- setdiff(groups_from_data, selected_groups)
           final_group_order <- c(ordered_groups, missing_groups)
           
-          # 将GroupName转换为有序因子
+          # Convert GroupName to ordered factor
           auc_data <- auc_data %>%
             mutate(GroupName = factor(GroupName, levels = final_group_order))
           
@@ -1952,11 +1915,11 @@ if (enable_plot_group_comparison) {
         pval_data <- readxl::read_excel(group_comp_path, sheet = pval_sheet_name)
         
         if (nrow(pval_data) > 0) {
-          # 检测是否为单次比较
+          # Detect whether this is a single comparison
           is_single_comparison <- nrow(pval_data) == 1 || 
                                  (exists("single_group_comparison") && any(pval_data$single_group_comparison == TRUE, na.rm = TRUE))
           
-          # 确定使用p值还是q值，以及相应的标签
+          # Determine whether to use p-values or q-values and the appropriate label
           value_column <- if (is_single_comparison) "p_value" else "q_value"
           value_label <- if (is_single_comparison) "p-value" else "q-value (BH-adj.)"
           subtitle_text <- if (is_single_comparison) {
@@ -1965,10 +1928,10 @@ if (enable_plot_group_comparison) {
             "Multiple comparisons - using BH-adjusted q-values"
           }
           
-          # 使用selected_groups的顺序，确保只包含实际存在的组别
+          # Use the order from selected_groups to ensure only actual groups are included
           all_groups_from_data <- union(pval_data$Group1, pval_data$Group2)
           ordered_groups <- intersect(selected_groups, all_groups_from_data)
-          # 如果有数据中存在但不在selected_groups中的组别，追加到末尾
+          # Append groups that exist in the data but not in selected_groups to the end
           missing_groups <- setdiff(all_groups_from_data, selected_groups)
           all_groups <- c(ordered_groups, missing_groups)
           
@@ -1978,13 +1941,13 @@ if (enable_plot_group_comparison) {
             # Add diagonal comparisons
             bind_rows(tibble(Group1 = all_groups, Group2 = all_groups, 
                             p_value = NA, q_value = NA, single_group_comparison = NA)) %>%
-            # 将组别转换为有序因子，按照selected_groups的顺序
+            # Convert group names to ordered factors following the selected order
             mutate(
               Group1 = factor(Group1, levels = all_groups),
               Group2 = factor(Group2, levels = all_groups)
             )
 
-          # 动态选择填充的值
+          # Dynamically choose the fill value
           heatmap_plot <- ggplot(full_pval_data, aes(x = Group1, y = Group2, fill = .data[[value_column]])) +
             geom_tile(color = "white", size = 0.5) +
             # Use a color scale that highlights significant values
@@ -1997,9 +1960,9 @@ if (enable_plot_group_comparison) {
             geom_text(aes(label = ifelse(is.na(.data[[value_column]]), "", sprintf("%.3f", .data[[value_column]]))), 
                      size = 3, color = "white") +
             coord_fixed() + # Ensure tiles are square
-            # 设置轴的顺序，取消默认的字母排序
+            # Set axis order to override the default alphabetical sorting
             scale_x_discrete(limits = all_groups) +
-            scale_y_discrete(limits = rev(all_groups)) + # y轴反转以匹配矩阵显示习惯
+            scale_y_discrete(limits = rev(all_groups)) + # Reverse the y-axis to match the typical matrix display
             labs(
               title = paste("Pairwise DeLong Test", value_label, "for:", base_name),
               subtitle = subtitle_text,
@@ -2019,19 +1982,19 @@ if (enable_plot_group_comparison) {
         }
       }
     }
-    cat("跨邻近方法比较的可视化图表已保存。\n")
+    cat("Cross-proximity method comparison visualization charts saved.\n")
   } else {
-    cat("警告: 未找到 Group_Comparison_Summary.xlsx，跳过相关图表的生成。\n")
+    cat("Warning: Group_Comparison_Summary.xlsx not found, skipping related chart generation.\n")
   }
 } else {
-  cat("\n跨邻近方法比较图表生成已禁用，跳过该图表。\n")
+  cat("\nCross-proximity method comparison chart generation disabled, skipping this chart.\n")
 }
 
 
 # --- 3. Visualization for Intersection Analysis: Dumbbell Plot ---
 intersection_comp_path <- file.path(output_dir, "Group_Comparison_Intersection_Summary.xlsx")
 if (enable_plot_intersection_dumbbell) {
-  cat("\n正在为样本交集公平性分析创建哑铃图...\n")
+  cat("\nCreating dumbbell plot for sample intersection fairness analysis...\n")
 
   # We need both files to create the comparison plot
   if (file.exists(group_comp_path) && file.exists(intersection_comp_path)) {
@@ -2046,7 +2009,7 @@ if (enable_plot_intersection_dumbbell) {
     common_base_names <- intersect(union_base_names, intersection_base_names)
 
     for (base_name in common_base_names) {
-      cat(paste("  - 正在为以下对象创建哑铃图:", base_name, "\n"))
+      cat(paste("  - Creating dumbbell plot for:", base_name, "\n"))
       
       # Load data from both analyses
       auc_union <- readxl::read_excel(group_comp_path, sheet = paste0("C_AUC_", base_name)) %>%
@@ -2059,13 +2022,13 @@ if (enable_plot_intersection_dumbbell) {
       combined_auc_data <- bind_rows(auc_union, auc_intersection)
 
       if (nrow(combined_auc_data) > 0) {
-        # 按照selected_groups的顺序排列，确保只包含实际存在的组别
+        # Order according to selected_groups, ensuring only actual existing groups are included
         groups_from_data <- unique(combined_auc_data$GroupName)
         ordered_groups <- intersect(selected_groups, groups_from_data)
         missing_groups <- setdiff(groups_from_data, selected_groups)
         final_group_order <- c(ordered_groups, missing_groups)
         
-        # 将GroupName转换为有序因子
+        # Convert GroupName to ordered factor
         combined_auc_data <- combined_auc_data %>%
           mutate(GroupName = factor(GroupName, levels = final_group_order))
         
@@ -2096,19 +2059,19 @@ if (enable_plot_intersection_dumbbell) {
         )
       }
     }
-    cat("样本交集公平性分析的哑铃图已保存。\n")
+    cat("Sample intersection fairness analysis dumbbell plots saved.\n")
   } else {
-    cat("警告: 未找到 Group_Comparison_Summary.xlsx 或 Group_Comparison_Intersection_Summary.xlsx，跳过哑铃图的生成。\n")
+    cat("Warning: Group_Comparison_Summary.xlsx or Group_Comparison_Intersection_Summary.xlsx not found, skipping dumbbell plot generation.\n")
   }
 } else {
-  cat("\n样本交集公平性哑铃图生成已禁用，跳过该图表。\n")
+  cat("\nSample intersection fairness dumbbell plot generation disabled, skipping this chart.\n")
 }
 
 
 # --- 4. Visualization for Model Choice Robustness: Performance vs. Stability Plot ---
 robustness_path <- file.path(output_dir, "Group_Robustness_Summary.xlsx")
 if (enable_plot_robustness_scatter) {
-  cat("\n正在为模型选择稳健性创建性能-稳定性散点图...\n")
+  cat("\nCreating performance-stability scatter plot for model selection robustness...\n")
 
   if (file.exists(robustness_path)) {
     robustness_data <- readxl::read_excel(robustness_path)
@@ -2138,15 +2101,15 @@ if (enable_plot_robustness_scatter) {
         plot = perf_stability_plot,
         width = 12, height = 10, bg = "white"
       )
-      cat("性能-稳定性散点图已保存。\n")
+      cat("Performance-stability scatter plot saved.\n")
     } else {
-      cat("警告: Group_Robustness_Summary.xlsx 为空，跳过散点图的生成。\n")
+      cat("Warning: Group_Robustness_Summary.xlsx is empty, skipping scatter plot generation.\n")
     }
   } else {
-    cat("警告: 未找到 Group_Robustness_Summary.xlsx，跳过散点图的生成。\n")
+    cat("Warning: Group_Robustness_Summary.xlsx not found, skipping scatter plot generation.\n")
   }
 } else {
-  cat("\n模型选择稳健性散点图生成已禁用，跳过该图表。\n")
+  cat("\nModel selection robustness scatter plot generation disabled, skipping this chart.\n")
 }
 
 
@@ -2154,7 +2117,7 @@ if (enable_plot_robustness_scatter) {
 # --- 5. Visualization for Controlled Variable Comparison ---
 controlled_comp_path <- file.path(output_dir, "Controlled_Variable_Comparison.xlsx")
 if (enable_plot_controlled_comparison) {
-  cat("\n正在为控制变量比较创建增益图...\n")
+  cat("\nCreating gain plots for controlled variable comparison...\n")
 
 if (file.exists(controlled_comp_path)) {
   controlled_comp_data <- readxl::read_excel(controlled_comp_path)
@@ -2162,14 +2125,14 @@ if (file.exists(controlled_comp_path)) {
   if (nrow(controlled_comp_data) > 0) {
     
     # --- 5a. Fixed Sensitivity - Specificity Gain Plot ---
-    cat("  - 正在创建固定Sensitivity下的Specificity增益图...\n")
+    cat("  - Creating Specificity gain plot at fixed Sensitivity...\n")
     
-    # 筛选指定的模型
+    # Filter specified models
     spec_gain_data <- controlled_comp_data %>%
       filter(ModelName %in% models_for_controlled_comparison) %>%
       mutate(
         Combined_Label = paste(Df_Name, Analysis_Group, sep = "\n"),
-        Significant = if_else(Specificity_Gain_Q_Value < 0.05, "显著 (q<0.05)", "不显著"),
+        Significant = if_else(Specificity_Gain_Q_Value < 0.05, "Significant (q<0.05)", "Not Significant"),
         ModelName = factor(ModelName, levels = rev(models_for_controlled_comparison))
       )
     
@@ -2180,14 +2143,14 @@ if (file.exists(controlled_comp_path)) {
       geom_point(aes(color = Significant), size = 3) +
       geom_errorbarh(aes(color = Significant), height = 0.2) +
       facet_wrap(~ Combined_Label, scales = "free_y", ncol = 3) +
-      scale_color_manual(values = c("不显著" = "black", "显著 (q<0.05)" = "#d62728")) +
+      scale_color_manual(values = c("Not Significant" = "black", "Significant (q<0.05)" = "#d62728")) +
       labs(
-        title = "控制变量比较：固定Sensitivity下的Specificity增益",
-        subtitle = "在传统方法的Sensitivity水平下，连续模型的Specificity增益（正值表示改进）",
-        x = "Specificity增益（相对于传统方法）",
-        y = "模型",
-        color = "统计显著性",
-        caption = "误差棒表示95% Bootstrap置信区间"
+        title = "Controlled Variable Comparison: Specificity Gain at Fixed Sensitivity",
+        subtitle = "Specificity gain of continuous models at traditional method's Sensitivity level (positive values indicate improvement)",
+        x = "Specificity Gain (relative to traditional method)",
+        y = "Model",
+        color = "Statistical Significance",
+        caption = "Error bars represent 95% Bootstrap confidence intervals"
       ) +
       coord_cartesian(xlim = controlled_comparison_xlim) +
       scale_x_continuous(breaks = seq(controlled_comparison_xlim[1], controlled_comparison_xlim[2], by = 0.05)) +
@@ -2207,14 +2170,14 @@ if (file.exists(controlled_comp_path)) {
     )
     
     # --- 5b. Fixed Specificity - Sensitivity Gain Plot ---
-    cat("  - 正在创建固定Specificity下的Sensitivity增益图...\n")
+    cat("  - Creating Sensitivity gain plot at fixed Specificity...\n")
     
-    # 筛选指定的模型
+    # Filter specified models
     sens_gain_data <- controlled_comp_data %>%
       filter(ModelName %in% models_for_controlled_comparison) %>%
       mutate(
         Combined_Label = paste(Df_Name, Analysis_Group, sep = "\n"),
-        Significant = if_else(Sensitivity_Gain_Q_Value < 0.05, "显著 (q<0.05)", "不显著"),
+        Significant = if_else(Sensitivity_Gain_Q_Value < 0.05, "Significant (q<0.05)", "Not Significant"),
         ModelName = factor(ModelName, levels = rev(models_for_controlled_comparison))
       )
     
@@ -2225,14 +2188,14 @@ if (file.exists(controlled_comp_path)) {
       geom_point(aes(color = Significant), size = 3) +
       geom_errorbarh(aes(color = Significant), height = 0.2) +
       facet_wrap(~ Combined_Label, scales = "free_y", ncol = 3) +
-      scale_color_manual(values = c("不显著" = "black", "显著 (q<0.05)" = "#d62728")) +
+      scale_color_manual(values = c("Not Significant" = "black", "Significant (q<0.05)" = "#d62728")) +
       labs(
-        title = "控制变量比较：固定Specificity下的Sensitivity增益",
-        subtitle = "在传统方法的Specificity水平下，连续模型的Sensitivity增益（正值表示改进）",
-        x = "Sensitivity增益（相对于传统方法）",
-        y = "模型",
-        color = "统计显著性",
-        caption = "误差棒表示95% Bootstrap置信区间"
+        title = "Controlled Variable Comparison: Sensitivity Gain at Fixed Specificity",
+        subtitle = "Sensitivity gain of continuous models at traditional method's Specificity level (positive values indicate improvement)",
+        x = "Sensitivity Gain (relative to traditional method)",
+        y = "Model",
+        color = "Statistical Significance",
+        caption = "Error bars represent 95% Bootstrap confidence intervals"
       ) +
       coord_cartesian(xlim = controlled_comparison_xlim) +
       scale_x_continuous(breaks = seq(controlled_comparison_xlim[1], controlled_comparison_xlim[2], by = 0.05)) +
@@ -2252,20 +2215,20 @@ if (file.exists(controlled_comp_path)) {
     )
     
     # --- 5c. Combined Gain Comparison (Scatter Plot) ---
-    cat("  - 正在创建综合增益对比散点图...\n")
+    cat("  - Creating combined gain comparison scatter plot...\n")
     
-    # 筛选指定的模型
+    # Filter specified models
     combined_gain_data <- controlled_comp_data %>%
       filter(ModelName %in% models_for_controlled_comparison) %>%
       mutate(
         Combined_Label = paste(Df_Name, Analysis_Group, sep = " - "),
         Both_Significant = if_else(
           Specificity_Gain_Q_Value < 0.05 & Sensitivity_Gain_Q_Value < 0.05,
-          "均显著", 
+          "Both Significant", 
           if_else(
             Specificity_Gain_Q_Value < 0.05 | Sensitivity_Gain_Q_Value < 0.05,
-            "部分显著",
-            "均不显著"
+            "Partially Significant",
+            "Neither Significant"
           )
         ),
         ModelName = factor(ModelName, levels = models_for_controlled_comparison)
@@ -2278,26 +2241,26 @@ if (file.exists(controlled_comp_path)) {
                                       color = Both_Significant, shape = ModelName)) +
       geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
       geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
-      # 添加横向error bar（Specificity增益的CI）
+      # Add horizontal error bar (CI for Specificity gain)
       geom_errorbarh(aes(xmin = Specificity_Gain_CI_Lower, xmax = Specificity_Gain_CI_Upper),
                      height = 0, alpha = 0.5, size = 0.5) +
-      # 添加纵向error bar（Sensitivity增益的CI）
+      # Add vertical error bar (CI for Sensitivity gain)
       geom_errorbar(aes(ymin = Sensitivity_Gain_CI_Lower, ymax = Sensitivity_Gain_CI_Upper),
                     width = 0, alpha = 0.5, size = 0.5) +
-      # 点在error bar上层
+      # Points on top of error bars
       geom_point(size = 4, alpha = 0.8) +
       facet_wrap(~ Combined_Label, scales = "free") +
       scale_color_manual(
-        values = c("均显著" = "#2ca02c", "部分显著" = "#ff7f0e", "均不显著" = "grey60")
+        values = c("Both Significant" = "#2ca02c", "Partially Significant" = "#ff7f0e", "Neither Significant" = "grey60")
       ) +
       labs(
-        title = "控制变量比较：Sensitivity与Specificity增益的综合对比",
-        subtitle = "相对于传统方法(logFC>0.5 & FDR<0.05)的性能增益（含95% CI error bars）",
-        x = "Specificity增益（固定Sensitivity时）",
-        y = "Sensitivity增益（固定Specificity时）",
-        color = "显著性状态",
-        shape = "模型类型",
-        caption = "右上象限表示两个指标均优于传统方法；误差棒表示95% Bootstrap置信区间"
+        title = "Controlled Variable Comparison: Combined Comparison of Sensitivity and Specificity Gains",
+        subtitle = "Performance gains relative to traditional method (logFC>0.5 & FDR<0.05) (with 95% CI error bars)",
+        x = "Specificity Gain (at fixed Sensitivity)",
+        y = "Sensitivity Gain (at fixed Specificity)",
+        color = "Significance Status",
+        shape = "Model Type",
+        caption = "Upper right quadrant indicates both metrics are superior to traditional method; error bars represent 95% Bootstrap confidence intervals"
       ) +
       coord_cartesian(xlim = controlled_comparison_xlim, ylim = controlled_comparison_ylim) +
       scale_x_continuous(breaks = seq(controlled_comparison_xlim[1], controlled_comparison_xlim[2], by = 0.1),
@@ -2317,22 +2280,22 @@ if (file.exists(controlled_comp_path)) {
       width = 16, height = 12, bg = "white"
     )
     
-    cat("控制变量比较的可视化图表已保存。\n")
+    cat("Controlled variable comparison visualizations saved.\n")
   } else {
-    cat("警告: Controlled_Variable_Comparison.xlsx 为空，跳过相关图表生成。\n")
+    cat("Warning: Controlled_Variable_Comparison.xlsx is empty; skipping related plots.\n")
   }
 } else {
-  cat("警告: 未找到 Controlled_Variable_Comparison.xlsx，跳过控制变量比较的图表生成。\n")
+  cat("Warning: Controlled_Variable_Comparison.xlsx not found; skipping controlled variable comparison plots.\n")
 }
 } else {
-  cat("\n控制变量比较增益图生成已禁用，跳过该图表。\n")
+  cat("\nControlled variable comparison gain plots disabled; skipping them.\n")
 }
 
 
 # --- 7. Visualization for Controlled Variable Comparison vs 1D_logFC ---
 controlled_comp_vs_logFC_path <- file.path(output_dir, "Controlled_Variable_Comparison_vs_1D_logFC.xlsx")
 if (enable_plot_controlled_comparison_vs_logFC) {
-  cat("\n正在为与1D_logFC模型的控制变量比较创建增益图...\n")
+  cat("\nCreating gain plots for controlled variable comparison vs 1D_logFC model...\n")
 
 if (file.exists(controlled_comp_vs_logFC_path)) {
   controlled_comp_vs_logFC_data <- readxl::read_excel(controlled_comp_vs_logFC_path)
@@ -2340,12 +2303,12 @@ if (file.exists(controlled_comp_vs_logFC_path)) {
   if (nrow(controlled_comp_vs_logFC_data) > 0) {
     
     # --- 7a. Fixed Sensitivity - Specificity Gain Plot (vs 1D_logFC) ---
-    cat("  - 正在创建固定Sensitivity下的Specificity增益图（vs 1D_logFC）...\n")
+    cat("  - Creating Specificity gain plot at fixed Sensitivity (vs 1D_logFC)...\n")
     
     spec_gain_logFC_data <- controlled_comp_vs_logFC_data %>%
       mutate(
         Combined_Label = paste(Df_Name, Analysis_Group, sep = "\n"),
-        Significant = if_else(Specificity_Gain_Q_Value < 0.05, "显著 (q<0.05)", "不显著"),
+        Significant = if_else(Specificity_Gain_Q_Value < 0.05, "Significant (q<0.05)", "Not Significant"),
         ModelName = factor(ModelName, levels = rev(unique(ModelName)))
       )
     
@@ -2356,14 +2319,14 @@ if (file.exists(controlled_comp_vs_logFC_path)) {
       geom_point(aes(color = Significant), size = 3) +
       geom_errorbarh(aes(color = Significant), height = 0.2) +
       facet_wrap(~ Combined_Label, scales = "free_y", ncol = 3) +
-      scale_color_manual(values = c("不显著" = "black", "显著 (q<0.05)" = "#d62728")) +
+      scale_color_manual(values = c("Not Significant" = "black", "Significant (q<0.05)" = "#d62728")) +
       labs(
-        title = "控制变量比较（vs 1D_logFC）：固定Sensitivity下的Specificity增益",
-        subtitle = "在1D_logFC模型的Sensitivity水平下，其他模型的Specificity增益（正值表示改进）",
-        x = "Specificity增益（相对于1D_logFC模型）",
-        y = "模型",
-        color = "统计显著性",
-        caption = "误差棒表示95% Bootstrap置信区间"
+        title = "Controlled variable comparison (vs 1D_logFC): Specificity gain at fixed Sensitivity",
+        subtitle = "Specificity gain of other models at the 1D_logFC model's Sensitivity level (positive = improvement)",
+        x = "Specificity Gain (vs. 1D_logFC model)",
+        y = "Model",
+        color = "Statistical Significance",
+        caption = "Error bars show 95% bootstrap confidence intervals"
       ) +
       coord_cartesian(xlim = controlled_comparison_xlim) +
       scale_x_continuous(breaks = seq(controlled_comparison_xlim[1], controlled_comparison_xlim[2], by = 0.05)) +
@@ -2383,12 +2346,12 @@ if (file.exists(controlled_comp_vs_logFC_path)) {
     )
     
     # --- 7b. Fixed Specificity - Sensitivity Gain Plot (vs 1D_logFC) ---
-    cat("  - 正在创建固定Specificity下的Sensitivity增益图（vs 1D_logFC）...\n")
+    cat("  - Creating Sensitivity gain plot at fixed Specificity (vs 1D_logFC)...\n")
     
     sens_gain_logFC_data <- controlled_comp_vs_logFC_data %>%
       mutate(
         Combined_Label = paste(Df_Name, Analysis_Group, sep = "\n"),
-        Significant = if_else(Sensitivity_Gain_Q_Value < 0.05, "显著 (q<0.05)", "不显著"),
+        Significant = if_else(Sensitivity_Gain_Q_Value < 0.05, "Significant (q<0.05)", "Not Significant"),
         ModelName = factor(ModelName, levels = rev(unique(ModelName)))
       )
     
@@ -2399,14 +2362,14 @@ if (file.exists(controlled_comp_vs_logFC_path)) {
       geom_point(aes(color = Significant), size = 3) +
       geom_errorbarh(aes(color = Significant), height = 0.2) +
       facet_wrap(~ Combined_Label, scales = "free_y", ncol = 3) +
-      scale_color_manual(values = c("不显著" = "black", "显著 (q<0.05)" = "#d62728")) +
+      scale_color_manual(values = c("Not Significant" = "black", "Significant (q<0.05)" = "#d62728")) +
       labs(
-        title = "控制变量比较（vs 1D_logFC）：固定Specificity下的Sensitivity增益",
-        subtitle = "在1D_logFC模型的Specificity水平下，其他模型的Sensitivity增益（正值表示改进）",
-        x = "Sensitivity增益（相对于1D_logFC模型）",
-        y = "模型",
-        color = "统计显著性",
-        caption = "误差棒表示95% Bootstrap置信区间"
+        title = "Controlled variable comparison (vs 1D_logFC): Sensitivity gain at fixed Specificity",
+        subtitle = "Sensitivity gain of other models at the 1D_logFC model's Specificity level (positive = improvement)",
+        x = "Sensitivity Gain (vs. 1D_logFC model)",
+        y = "Model",
+        color = "Statistical Significance",
+        caption = "Error bars show 95% bootstrap confidence intervals"
       ) +
       coord_cartesian(xlim = controlled_comparison_xlim) +
       scale_x_continuous(breaks = seq(controlled_comparison_xlim[1], controlled_comparison_xlim[2], by = 0.05)) +
@@ -2426,18 +2389,18 @@ if (file.exists(controlled_comp_vs_logFC_path)) {
     )
     
     # --- 7c. Combined Gain Comparison (Scatter Plot vs 1D_logFC) ---
-    cat("  - 正在创建综合增益对比散点图（vs 1D_logFC）...\n")
+    cat("  - Creating combined gain comparison scatter plot (vs 1D_logFC)...\n")
     
     combined_gain_logFC_data <- controlled_comp_vs_logFC_data %>%
       mutate(
         Combined_Label = paste(Df_Name, Analysis_Group, sep = " - "),
         Both_Significant = if_else(
           Specificity_Gain_Q_Value < 0.05 & Sensitivity_Gain_Q_Value < 0.05,
-          "均显著", 
+          "Both Significant", 
           if_else(
             Specificity_Gain_Q_Value < 0.05 | Sensitivity_Gain_Q_Value < 0.05,
-            "部分显著",
-            "均不显著"
+            "Partially Significant",
+            "None Significant"
           )
         ),
         ModelName = factor(ModelName, levels = unique(ModelName))
@@ -2450,26 +2413,26 @@ if (file.exists(controlled_comp_vs_logFC_path)) {
                                       color = Both_Significant, shape = ModelName)) +
       geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
       geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
-      # 添加横向error bar（Specificity增益的CI）
+      # Add horizontal error bars (Specificity gain CI)
       geom_errorbarh(aes(xmin = Specificity_Gain_CI_Lower, xmax = Specificity_Gain_CI_Upper),
                      height = 0, alpha = 0.5, size = 0.5) +
-      # 添加纵向error bar（Sensitivity增益的CI）
+      # Add vertical error bars (Sensitivity gain CI)
       geom_errorbar(aes(ymin = Sensitivity_Gain_CI_Lower, ymax = Sensitivity_Gain_CI_Upper),
                     width = 0, alpha = 0.5, size = 0.5) +
-      # 点在error bar上层
+      # Points are drawn above the error bars
       geom_point(size = 4, alpha = 0.8) +
       facet_wrap(~ Combined_Label, scales = "free") +
       scale_color_manual(
-        values = c("均显著" = "#2ca02c", "部分显著" = "#ff7f0e", "均不显著" = "grey60")
+        values = c("Both Significant" = "#2ca02c", "Partially Significant" = "#ff7f0e", "None Significant" = "grey60")
       ) +
       labs(
-        title = "控制变量比较（vs 1D_logFC）：Sensitivity与Specificity增益的综合对比",
-        subtitle = "相对于1D_logFC模型的性能增益（含95% CI error bars）",
-        x = "Specificity增益（固定Sensitivity时）",
-        y = "Sensitivity增益（固定Specificity时）",
-        color = "显著性状态",
-        shape = "模型类型",
-        caption = "右上象限表示两个指标均优于1D_logFC模型；误差棒表示95% Bootstrap置信区间"
+        title = "Controlled variable comparison (vs 1D_logFC): Combined Sensitivity and Specificity gains",
+        subtitle = "Performance gains relative to the 1D_logFC model (with 95% CI error bars)",
+        x = "Specificity Gain (at fixed Sensitivity)",
+        y = "Sensitivity Gain (at fixed Specificity)",
+        color = "Significance Status",
+        shape = "Model Type",
+        caption = "Upper right quadrant indicates both metrics outperform the 1D_logFC model; error bars show 95% bootstrap confidence intervals"
       ) +
       coord_cartesian(xlim = controlled_comparison_xlim, ylim = controlled_comparison_ylim) +
       scale_x_continuous(breaks = seq(controlled_comparison_xlim[1], controlled_comparison_xlim[2], by = 0.1),
@@ -2489,55 +2452,55 @@ if (file.exists(controlled_comp_vs_logFC_path)) {
       width = 16, height = 12, bg = "white"
     )
     
-    cat("与1D_logFC模型的控制变量比较可视化图表已保存。\n")
+    cat("Controlled variable comparison (vs 1D_logFC) visualizations saved.\n")
   } else {
-    cat("警告: Controlled_Variable_Comparison_vs_1D_logFC.xlsx 为空，跳过相关图表生成。\n")
+    cat("Warning: Controlled_Variable_Comparison_vs_1D_logFC.xlsx is empty; skipping related plots.\n")
   }
 } else {
-  cat("警告: 未找到 Controlled_Variable_Comparison_vs_1D_logFC.xlsx，跳过与1D_logFC的控制变量比较图表生成。\n")
+  cat("Warning: Controlled_Variable_Comparison_vs_1D_logFC.xlsx not found; skipping controlled variable comparison vs 1D_logFC plots.\n")
 }
 } else {
-  cat("\n与1D_logFC的控制变量增益图生成已禁用，跳过该图表。\n")
+  cat("\nControlled variable gain plots vs 1D_logFC disabled; skipping them.\n")
 }
 
 
 # --- 6. Visualization for Candidate Protein Localization Distribution ---
 candidates_path <- file.path(output_dir, "detailed_candidates_by_model.xlsx")
 if (enable_plot_localization_distribution) {
-  cat("\n正在为候选蛋白的定位分布创建堆叠柱状图...\n")
+  cat("\nCreating stacked bar plots for candidate protein localization distribution...\n")
 
-# 读取候选蛋白数据
+# Read candidate protein data
 
 if (file.exists(candidates_path)) {
   candidates_data <- readxl::read_excel(candidates_path)
   
   if (nrow(candidates_data) > 0) {
     
-    # --- 6a. 准备数据：统计每个模型+组别的定位分布 ---
-    cat("  - 正在统计候选蛋白的定位分布...\n")
+    # --- 6a. Prepare data: summarize localization distribution for each model + group ---
+    cat("  - Summarizing localization distribution for candidate proteins...\n")
     
-    # 只保留通过阈值的候选蛋白（PassThreshold == "Pass"）
+    # Keep only candidate proteins that passed the threshold (PassThreshold == "Pass")
     candidates_passed <- candidates_data %>%
       filter(PassThreshold == "Pass")
     
-    # 统计每个模型、组别、定位类别的蛋白数量
+    # Count proteins by model, group, and localization category
     localization_summary <- candidates_passed %>%
       group_by(DataAnalysisMethod, ExperimentGroup, Model, MultiBait_Localization) %>%
       summarise(
         Count = n(),
         .groups = "drop"
       ) %>%
-      # 计算每个模型+组别组合内的百分比
+      # Calculate percentage within each model + group combination
       group_by(DataAnalysisMethod, ExperimentGroup, Model) %>%
       mutate(
         Total_Count = sum(Count),
         Percentage = Count / Total_Count * 100,
-        # 创建组合标签用于绘图
+        # Create combined labels for plotting
         Model_Group = paste(Model, ExperimentGroup, sep = " - ")
       ) %>%
       ungroup()
     
-    # 导出详细统计数据
+    # Export detailed summary statistics
     localization_summary_export <- localization_summary %>%
       select(
         DataAnalysisMethod,
@@ -2554,44 +2517,44 @@ if (file.exists(candidates_path)) {
       list(Localization_Distribution = localization_summary_export),
       path = file.path(output_dir, "Candidate_Localization_Distribution.xlsx")
     )
-    cat("  - 定位分布统计数据已导出到 Candidate_Localization_Distribution.xlsx\n")
+    cat("  - Localization distribution statistics exported to Candidate_Localization_Distribution.xlsx\n")
     
-    # --- 6b. 为每个DataAnalysisMethod创建堆叠柱状图 ---
+    # --- 6b. Create stacked bar plots for each DataAnalysisMethod ---
     
-    # 定义一致的颜色方案（根据示例图）
+    # Define a consistent color palette (based on the example figure)
     localization_colors <- c(
-      "Nuclear&SGs" = "#4472C4",           # 蓝色
-      "Nuclear&Cytosol&SGs" = "#70AD47",  # 青色
-      "SGs&Other" = "#FFC000",             # 黄色
-      "Cytosol&SGs" = "#C00000"            # 红色
+      "Nuclear&SGs" = "#4472C4",           # Blue
+      "Nuclear&Cytosol&SGs" = "#70AD47",  # Teal
+      "SGs&Other" = "#FFC000",             # Yellow
+      "Cytosol&SGs" = "#C00000"            # Red
     )
     
-    # 获取所有唯一的DataAnalysisMethod
+    # Get all unique DataAnalysisMethod values
     data_methods <- unique(localization_summary$DataAnalysisMethod)
     
     for (data_method in data_methods) {
-      cat(paste("  - 正在为", data_method, "创建定位分布图...\n"))
+      cat(paste("  - Creating localization distribution plot for", data_method, "...\n"))
       
-      # 筛选当前data method的数据
+      # Filter the data for the current method
       plot_data_loc <- localization_summary %>%
         filter(DataAnalysisMethod == data_method) %>%
-        # 按照选定组别的顺序排列
+        # Order rows according to the selected group sequence
         mutate(
           ExperimentGroup = factor(ExperimentGroup, levels = selected_groups),
-          # 确保定位类别有序（从底部到顶部）
-          # 顺序：红色Cytosol&SGs(底) → 黄色SGs&Other → 绿色Nuclear&Cytosol&SGs → 蓝色Nuclear&SGs(顶)
+          # Ensure localization categories are ordered (bottom to top)
+          # Order: Cytosol&SGs (red, bottom) → SGs&Other (yellow) → Nuclear&Cytosol&SGs (green) → Nuclear&SGs (blue, top)
           MultiBait_Localization = factor(
             MultiBait_Localization,
             levels = c("Cytosol&SGs", "SGs&Other", "Nuclear&Cytosol&SGs", "Nuclear&SGs")
           )
         )
       
-      # 为x轴创建有序的标签
-      # 格式：Model (Group)
+      # Create ordered labels for the x-axis
+      # Format: Model (Group)
       plot_data_loc <- plot_data_loc %>%
         mutate(
           X_Label = paste0(Model, "\n(", ExperimentGroup, ")"),
-          # 创建排序键：先按ExperimentGroup再按Model
+          # Create a sort key: ExperimentGroup first, then Model
           Sort_Key = paste(
             sprintf("%02d", as.numeric(ExperimentGroup)),
             Model
@@ -2602,10 +2565,10 @@ if (file.exists(candidates_path)) {
           X_Label = factor(X_Label, levels = unique(X_Label))
         )
       
-      # 创建堆叠柱状图
+      # Create the stacked bar chart
       loc_barplot <- ggplot(plot_data_loc, aes(x = X_Label, y = Percentage, fill = MultiBait_Localization)) +
         geom_col(width = 0.8, color = "white", size = 0.3) +
-        # 在柱子顶部添加蛋白数量标注
+        # Add protein count labels above each bar
         geom_text(
           data = plot_data_loc %>% 
             group_by(X_Label) %>% 
@@ -2620,7 +2583,7 @@ if (file.exists(candidates_path)) {
           size = 3,
           fontface = "bold"
         ) +
-        # 在每个堆叠段内显示百分比（只显示>5%的）
+        # Display percentages inside each stack segment (only when >5%)
         geom_text(
           aes(label = ifelse(Percentage > 5, paste0(round(Percentage), "%"), "")),
           position = position_stack(vjust = 0.5),
@@ -2634,11 +2597,11 @@ if (file.exists(candidates_path)) {
           breaks = c("Nuclear&SGs", "Nuclear&Cytosol&SGs", "SGs&Other", "Cytosol&SGs")
         ) +
         labs(
-          title = paste("候选蛋白定位分布 -", data_method),
-          subtitle = paste("按模型和实验组统计通过阈值的", myTP_vector[1], "相关蛋白的定位分布"),
-          x = "模型 (实验组)",
-          y = "相对丰度 (%)",
-          caption = "柱子顶部数字表示该组合的候选蛋白总数"
+          title = paste("Candidate protein localization distribution -", data_method),
+          subtitle = paste("Localization distribution of", myTP_vector[1], "related candidates that passed the threshold, grouped by model and experimental group"),
+          x = "Model (Experimental Group)",
+          y = "Relative abundance (%)",
+          caption = "Numbers above bars show the total candidate proteins for each combination"
         ) +
         scale_y_continuous(
           limits = c(0, 105),
@@ -2659,7 +2622,7 @@ if (file.exists(candidates_path)) {
           panel.border = element_rect(color = "black", fill = NA, size = 0.5)
         )
       
-      # 保存图表
+      # Save the plot
       ggsave(
         filename = file.path(plots_dir, paste0("6_Localization_Distribution_", data_method, ".pdf")),
         plot = loc_barplot,
@@ -2669,10 +2632,10 @@ if (file.exists(candidates_path)) {
       )
     }
     
-    # --- 6c. 创建对比图：比较不同模型的定位偏好 ---
-    cat("  - 正在创建模型间定位分布对比图...\n")
+    # --- 6c. Create comparison plots: compare localization preferences across models ---
+    cat("  - Creating model localization distribution comparison plot...\n")
     
-    # 计算每个模型在所有组别上的平均定位分布
+    # Calculate each model's average localization distribution across all groups
     model_avg_distribution <- localization_summary %>%
       group_by(DataAnalysisMethod, Model, MultiBait_Localization) %>%
       summarise(
@@ -2681,8 +2644,8 @@ if (file.exists(candidates_path)) {
         .groups = "drop"
       ) %>%
       mutate(
-        # 确保定位类别有序（从底部到顶部）
-        # 顺序：红色Cytosol&SGs(底) → 黄色SGs&Other → 绿色Nuclear&Cytosol&SGs → 蓝色Nuclear&SGs(顶)
+        # Ensure localization categories are ordered (bottom to top)
+        # Order: Cytosol&SGs (red, bottom) → SGs&Other (yellow) → Nuclear&Cytosol&SGs (green) → Nuclear&SGs (blue, top)
         MultiBait_Localization = factor(
           MultiBait_Localization,
           levels = c("Cytosol&SGs", "SGs&Other", "Nuclear&Cytosol&SGs", "Nuclear&SGs")
@@ -2692,7 +2655,7 @@ if (file.exists(candidates_path)) {
     for (data_method in data_methods) {
       plot_data_model_comp <- model_avg_distribution %>%
         filter(DataAnalysisMethod == data_method) %>%
-        # 按模型维度排序
+        # Sort by model
         mutate(
           Model = factor(Model, levels = c(
             "logFC>0.5 & FDR<0.05",
@@ -2726,11 +2689,11 @@ if (file.exists(candidates_path)) {
           breaks = c("Nuclear&SGs", "Nuclear&Cytosol&SGs", "SGs&Other", "Cytosol&SGs")
         ) +
         labs(
-          title = paste("模型间定位偏好对比 -", data_method),
-          subtitle = "各模型在所有实验组上的平均定位分布",
-          x = "模型",
-          y = "平均相对丰度 (%)",
-          caption = "数字表示该模型在所有组别中的候选蛋白总数"
+          title = paste("Model localization preference comparison -", data_method),
+          subtitle = "Average localization distribution of each model across all experimental groups",
+          x = "Model",
+          y = "Mean relative abundance (%)",
+          caption = "Numbers show the total candidate proteins for the model across all groups"
         ) +
         scale_y_continuous(
           limits = c(0, 110),
@@ -2760,29 +2723,29 @@ if (file.exists(candidates_path)) {
       )
     }
     
-    cat("候选蛋白定位分布可视化已完成。\n")
+    cat("Candidate protein localization distribution visualization complete.\n")
     
   } else {
-    cat("警告: detailed_candidates_by_model.xlsx 为空，跳过定位分布分析。\n")
+    cat("Warning: detailed_candidates_by_model.xlsx is empty; skipping localization distribution analysis.\n")
   }
 } else {
-  cat("警告: 未找到 detailed_candidates_by_model.xlsx，跳过定位分布分析。\n")
+  cat("Warning: detailed_candidates_by_model.xlsx not found; skipping localization distribution analysis.\n")
 }
 } else {
-  cat("\n候选蛋白定位分布图生成已禁用，跳过该图表。\n")
+  cat("\nCandidate protein localization distribution plotting disabled; skipping the chart.\n")
 }
 
 
-cat("\n--- 可视化阶段完成 ---\n")
+cat("\n--- Visualization phase complete ---\n")
 
 } else {
-  cat("\n可视化生成已禁用，跳过图表创建。\n")
+  cat("\nVisualization generation disabled; skipping chart creation.\n")
 }
 
 
 # --- New Section: Cross-Group (Inter-Method) Comparison ---
 if (enable_group_comparison) {
-  cat("\n开始执行跨邻近方法比较分析（重复部分）...\n")
+  cat("\nStarting cross-proximity method comparison analysis (repeat run)...\n")
 
 # Define the baseline model for this comparison
 baseline_model_for_comparison <- "2D_Abundance_logFC"
@@ -2850,10 +2813,10 @@ for (df_name in names(results_by_df)) {
   p_values_long <- p_values_long_temp %>%
     mutate(
       q_value = if (nrow(p_values_long_temp) == 1) {
-        # 单次组间比较时，q值等于p值
+        # For a single group comparison, q_value equals p_value
         p_value
       } else {
-        # 多次组间比较时，应用BH校正
+        # For multiple group comparisons, apply BH correction
         p.adjust(p_value, method = "BH")
       },
       single_group_comparison = (nrow(p_values_long_temp) == 1)
@@ -2882,13 +2845,13 @@ if (length(all_group_comparisons) > 0) {
   export_list_group_comp <- c(export_list_group_comp, pairwise_sheets)
   
   writexl::write_xlsx(export_list_group_comp, path = file.path(output_dir, "Group_Comparison_Summary.xlsx"))
-  cat("\n跨邻近方法比较结果已导出到 Group_Comparison_Summary.xlsx\n")
+  cat("\nCross-proximity method comparison results exported to Group_Comparison_Summary.xlsx\n")
 } else {
-  cat("\n未能生成任何跨邻近方法比较结果。\n")
+  cat("\nFailed to generate any cross-proximity method comparison results.\n")
 }
 
 } else {
-  cat("\n组间比较分析已禁用，跳过重复的组间比较分析。\n")
+  cat("\nGroup comparison analysis disabled; skipping the duplicate cross-group comparison run.\n")
 }
 
 # -------------------------------------------------------------------
@@ -2896,19 +2859,19 @@ if (length(all_group_comparisons) > 0) {
 # -------------------------------------------------------------------
 
 # --- (REMOVED) Save Phase 1 Results to RData ---
-# cat("\n正在将 Phase 1 的关键结果保存到 RData 文件中...\n")
+# cat("\nSaving key Phase 1 results to an RData file...\n")
 # save(
 #   all_results, 
 #   all_group_comparisons, 
 #   final_auc_summary,
 #   file = file.path(output_dir, "analysis_phase1_output.RData")
 # )
-# cat("Phase 1 结果已成功保存到", file.path(output_dir, "analysis_phase1_output.RData"), "\n")
+# cat("Phase 1 results successfully saved to", file.path(output_dir, "analysis_phase1_output.RData"), "\n")
 
 # Gracefully terminate the parallel backend
 plan(sequential)
-cat("\n并行会话已终止。脚本执行完毕。\n")
+cat("\nParallel session terminated. Script finished.\n")
 
 
 save.image(file = "Add_Phase1_2_alldata.RData")
-print("工作环境已成功保存到 Add_Phase1_2_alldata.RData")
+print("Workspace successfully saved to Add_Phase1_2_alldata.RData")
