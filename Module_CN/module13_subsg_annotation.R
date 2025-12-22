@@ -7,15 +7,16 @@ module13_subsg_annotation <- function(
     dir_config,
     expr_fdr_df_list_2nd,
     annotation_references,
-    mode = c("subSG", "subNucleolus"),
+    mode = c("subSG", "subNucleolus", "none"),
     target_column = NULL,
     output_prefix = "Module13",
     levels_order = NULL,
     forstep16_versions = NULL
 ) {
 
-  mode <- match.arg(mode)
-  mode_label <- ifelse(mode == "subNucleolus", "SubNucleolus", "SubSG")
+  mode <- if (is.null(mode)) "none" else match.arg(mode)
+  skip_annotation <- identical(mode, "none")
+  mode_label <- if (skip_annotation) "NoSubAnnotation" else ifelse(mode == "subNucleolus", "SubNucleolus", "SubSG")
   cat(sprintf("\n=== Module 13: %s 注释 ===\n\n", mode_label))
 
   required_pkgs <- c("dplyr", "stringr", "purrr", "readr")
@@ -41,11 +42,11 @@ module13_subsg_annotation <- function(
   if (length(expr_fdr_df_list_2nd) == 0) {
     stop("✗ 错误：expr_fdr_df_list_2nd 为空，无法进行 SubSG 注释")
   }
-  if (is.null(annotation_references)) {
+  if (is.null(annotation_references) && !skip_annotation) {
     stop("✗ 错误：annotation_references 为空，请先运行 Module 3")
   }
 
-  if (is.null(target_column)) {
+  if (is.null(target_column) && !skip_annotation) {
     target_column <- if (mode == "subNucleolus") {
       "Sub_HPA_Localization"
     } else {
@@ -53,7 +54,7 @@ module13_subsg_annotation <- function(
     }
   }
 
-  if (is.null(levels_order)) {
+  if (is.null(levels_order) && !skip_annotation) {
     levels_order <- if (mode == "subNucleolus") {
       c(
         "Other",
@@ -82,26 +83,31 @@ module13_subsg_annotation <- function(
     }
   }
 
-  if (mode == "subSG") {
-    halo_refs <- annotation_references$SGs_refs
-    if (is.null(halo_refs$HaloMap_SGs)) {
-      stop("✗ 错误：未找到 HaloMap_SGs 参考数据，请检查 Reference 目录或 Module 3 配置")
-    }
-  }
-
-  halomap_sg_genes <- if (mode == "subSG") halo_refs$HaloMap_SGs$Known.SG.Reference else NULL
-
-  hpa_mode <- if (mode == "subNucleolus") "Nucleolus" else "SG"
-  hpa_sets <- load_HPA_annotations(dir_config, mode = hpa_mode)
-
-  nuclear_genes <- hpa_sets$Nuclear$Gene
-  cytosol_genes <- hpa_sets$Cytosol$Gene
-  nuclear_cytosol_genes <- hpa_sets$Nuclear_Cytosol$Gene
-  mito_genes <- annotation_references$MitoCarta_anno$Symbol
-
+  halomap_sg_genes <- NULL
+  hpa_sets <- NULL
+  nuclear_genes <- cytosol_genes <- nuclear_cytosol_genes <- mito_genes <- NULL
   subn_sets <- NULL
-  if (mode == "subNucleolus") {
-    subn_sets <- build_subnucleolus_sets(dir_config, hpa_sets)
+
+  if (!skip_annotation) {
+    if (mode == "subSG") {
+      halo_refs <- annotation_references$SGs_refs
+      if (is.null(halo_refs$HaloMap_SGs)) {
+        stop("✗ 错误：未找到 HaloMap_SGs 参考数据，请检查 Reference 目录或 Module 3 配置")
+      }
+      halomap_sg_genes <- halo_refs$HaloMap_SGs$Known.SG.Reference
+    }
+
+    hpa_mode <- if (mode == "subNucleolus") "Nucleolus" else "SG"
+    hpa_sets <- load_HPA_annotations(dir_config, mode = hpa_mode)
+
+    nuclear_genes <- hpa_sets$Nuclear$Gene
+    cytosol_genes <- hpa_sets$Cytosol$Gene
+    nuclear_cytosol_genes <- hpa_sets$Nuclear_Cytosol$Gene
+    mito_genes <- annotation_references$MitoCarta_anno$Symbol
+
+    if (mode == "subNucleolus") {
+      subn_sets <- build_subnucleolus_sets(dir_config, hpa_sets)
+    }
   }
 
   annotated_list <- list()
@@ -118,31 +124,35 @@ module13_subsg_annotation <- function(
 
     target_exists <- target_column %in% colnames(df)
 
-    mutated_df <- if (mode == "subNucleolus") {
-      annotate_subnucleolus_df(
-        df,
-        target_column,
-        subn_sets,
-        mito_genes
+    if (!skip_annotation) {
+      mutated_df <- if (mode == "subNucleolus") {
+        annotate_subnucleolus_df(
+          df,
+          target_column,
+          subn_sets,
+          mito_genes
+        )
+      } else {
+        annotate_subsg_df(
+          df,
+          target_column,
+          halomap_sg_genes,
+          nuclear_genes,
+          cytosol_genes,
+          nuclear_cytosol_genes,
+          mito_genes
+        )
+      }
+
+      mutated_df[[target_column]] <- factor(
+        mutated_df[[target_column]],
+        levels = levels_order
       )
     } else {
-      annotate_subsg_df(
-        df,
-        target_column,
-        halomap_sg_genes,
-        nuclear_genes,
-        cytosol_genes,
-        nuclear_cytosol_genes,
-        mito_genes
-      )
+      mutated_df <- df
     }
 
-    mutated_df[[target_column]] <- factor(
-      mutated_df[[target_column]],
-      levels = levels_order
-    )
-
-    if (!target_exists) {
+    if (!skip_annotation && !target_exists) {
       loc_cols <- grep("_Localization$", colnames(mutated_df), value = TRUE)
       loc_cols <- loc_cols[loc_cols != target_column]
 
@@ -164,7 +174,7 @@ module13_subsg_annotation <- function(
         "%s_%s_%s.csv",
         output_prefix,
         dataset_name,
-        ifelse(mode == "subNucleolus", "SubNucleolus", "SubSGs")
+        if (skip_annotation) "NoSubAnno" else ifelse(mode == "subNucleolus", "SubNucleolus", "SubSGs")
       )
     )
     write.csv(mutated_df, output_file, row.names = FALSE)

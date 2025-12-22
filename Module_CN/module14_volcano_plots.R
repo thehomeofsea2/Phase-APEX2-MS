@@ -281,9 +281,14 @@ module14_volcano_plots <- function(
     threshold_color_above = "red",
     threshold_color_below = "grey70",
     label_mode = c("with", "without"),
+    label_use_ggrepel = TRUE,
+    label_use_segments = TRUE,
+    label_segment_color = "grey60",
     label_annotations = c("SGs", "Mitochondrion"),
     label_size = 3,
-    label_max_overlaps = 15,
+    label_max_overlaps = 200,
+    label_force = 1,
+    label_box_padding = 0.25,
     comparison_sets = NULL,
     xlim_override = c(-3, 4),
     ylim_override = c(0, 7.5),
@@ -595,6 +600,7 @@ module14_volcano_plots <- function(
               mutate(
                 is_significant = abs(.data[[fc_col]]) >= logfc_threshold &
                   abs(.data[[fdr_col]]) <= fdr_threshold,
+                point_alpha = ifelse(pass_threshold, 1, 0.5),
                 label_text = dplyr::case_when(
                   mode == "with" &
                     annotation_value %in% label_annotations &
@@ -630,7 +636,7 @@ module14_volcano_plots <- function(
               aes(x = .data[[fc_col]], y = log10FDR)
             ) +
               geom_point(
-                aes(color = point_color),
+                aes(color = point_color, alpha = point_alpha),
                 size = 0.7,
                 show.legend = FALSE
               ) +
@@ -645,6 +651,7 @@ module14_volcano_plots <- function(
                 color = "black"
               ) +
               scale_color_identity() +
+              scale_alpha_identity() +
               labs(
                 title = sprintf(
                   "Volcano Plot (%s | %s)\n%s\n%s",
@@ -668,15 +675,28 @@ module14_volcano_plots <- function(
             if (mode == "with") {
               label_data <- subset_df %>% filter(!is.na(label_text))
               if (nrow(label_data) > 0) {
-                p <- p +
-                  geom_text_repel(
-                    data = label_data,
-                    aes(label = label_text, color = label_color),
-                    size = label_size,
-                    segment.color = NA,
-                    show.legend = FALSE,
-                    max.overlaps = label_max_overlaps
-                  )
+                segment_col <- if (label_use_segments) label_segment_color else NA
+                if (label_use_ggrepel) {
+                  p <- p +
+                    geom_text_repel(
+                      data = label_data,
+                      aes(label = label_text, color = label_color),
+                      size = label_size,
+                      segment.color = segment_col,
+                      show.legend = FALSE,
+                      max.overlaps = label_max_overlaps,
+                      force = label_force,
+                      box.padding = label_box_padding
+                    )
+                } else {
+                  p <- p +
+                    geom_text(
+                      data = label_data,
+                      aes(label = label_text, color = label_color),
+                      size = label_size,
+                      show.legend = FALSE
+                    )
+                }
               }
             }
 

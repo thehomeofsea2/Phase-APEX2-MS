@@ -175,18 +175,18 @@ module14_print_available_options <- function(
     comparison_sets <- module14_default_comparison_sets(comparison_metadata)
   }
   if (length(expr_fdr_df_list_2nd_subsgs) == 0) {
-    cat("[Module14] ⚠ Expr_FDR_df_list_2nd_SubSGs 为空，无法展示可选项\n")
+    cat("[Module14] ⚠ Expr_FDR_df_list_2nd_SubSGs is empty; cannot show available options\n")
     return(invisible(FALSE))
   }
 
   versions <- names(expr_fdr_df_list_2nd_subsgs)
-  cat("\n[Module14] 可用数据集版本：\n")
+  cat("\n[Module14] Available dataset versions:\n")
   cat(sprintf("  %s\n", paste(versions, collapse = ", ")))
 
   annotation_cols <- module14_collect_annotation_cols(expr_fdr_df_list_2nd_subsgs)
-  cat("\n[Module14] 可选注释列及元素：\n")
+  cat("\n[Module14] Available annotation columns and values:\n")
   if (length(annotation_cols) == 0) {
-    cat("  (未检测到 *_Localization 列)\n")
+    cat("  (No *_Localization columns detected)\n")
   } else {
     for (col in annotation_cols) {
       values <- module14_collect_annotation_values(expr_fdr_df_list_2nd_subsgs, col)
@@ -199,15 +199,15 @@ module14_print_available_options <- function(
   }
 
   comparisons <- module14_collect_comparisons(expr_fdr_df_list_2nd_subsgs)
-  cat("\n[Module14] 可用 Comparisons（logFC/FDR 成对列）：\n")
+  cat("\n[Module14] Available comparisons (paired logFC/FDR columns):\n")
   if (length(comparisons) == 0) {
-    cat("  (未找到匹配的比较列)\n")
+    cat("  (No matching comparison columns found)\n")
   } else {
     cat(sprintf("  %s\n", paste(comparisons, collapse = ", ")))
   }
 
   if (!is.null(comparison_metadata) && nrow(comparison_metadata) > 0) {
-    cat("\n[Module14] Comparison 分类统计：\n")
+    cat("\n[Module14] Comparison category counts:\n")
     for (cat_name in unique(comparison_metadata$category)) {
       subset <- comparison_metadata %>% filter(category == cat_name)
       cat(sprintf("  - %s (%d): %s\n",
@@ -217,9 +217,9 @@ module14_print_available_options <- function(
     }
   }
 
-  cat("\n[Module14] 默认 Comparison groups：\n")
+  cat("\n[Module14] Default comparison groups:\n")
   if (length(comparison_sets) == 0) {
-    cat("  (未定义 comparison_sets)\n")
+    cat("  (comparison_sets not defined)\n")
   } else {
     for (set in comparison_sets) {
       cat(sprintf("  - %s\n", set$name))
@@ -238,12 +238,12 @@ module14_try_load_module13 <- function(
     return(FALSE)
   }
   if (!file.exists(workspace_file)) {
-    cat(sprintf("[Module14] 提示：未找到 %s，可先运行 Module 13 以生成该文件\n",
+    cat(sprintf("[Module14] Note: %s not found; run Module 13 to generate this file\n",
                 workspace_file))
     return(FALSE)
   }
   load(workspace_file, envir = .GlobalEnv)
-  cat(sprintf("[Module14] ✓ 已加载 %s，检测 SubSG 数据可用\n", workspace_file))
+  cat(sprintf("[Module14] ✓ Loaded %s; SubSG data available\n", workspace_file))
   TRUE
 }
 
@@ -261,7 +261,7 @@ module14_autoprint_on_source <- function() {
       silent = FALSE
     )
   } else {
-    cat("[Module14] 提示：当前环境缺少 Expr_FDR_df_list_2nd_SubSGs，需先运行 Module 13\n")
+    cat("[Module14] Note: Expr_FDR_df_list_2nd_SubSGs missing in the current environment; run Module 13 first\n")
   }
 }
 
@@ -281,9 +281,14 @@ module14_volcano_plots <- function(
     threshold_color_above = "red",
     threshold_color_below = "grey70",
     label_mode = c("with", "without"),
+    label_use_ggrepel = TRUE,
+    label_use_segments = TRUE,
+    label_segment_color = "grey60",
     label_annotations = c("SGs", "Mitochondrion"),
     label_size = 3,
-    label_max_overlaps = 15,
+    label_max_overlaps = 200,
+    label_force = 1,
+    label_box_padding = 0.25,
     comparison_sets = NULL,
     xlim_override = c(-3, 4),
     ylim_override = c(0, 7.5),
@@ -294,12 +299,12 @@ module14_volcano_plots <- function(
     comparison_categories = NULL
 ) {
 
-  cat("\n=== Module 14: 火山图 (基于 Expr_FDR_df_list_2nd_SubSGs) ===\n")
+  cat("\n=== Module 14: Volcano plots (based on Expr_FDR_df_list_2nd_SubSGs) ===\n")
 
   required_pkgs <- c("dplyr", "ggplot2", "ggrepel", "scales", "rlang", "openxlsx")
   for (pkg in required_pkgs) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
-      stop(sprintf("✗ 错误：需要安装 %s 包", pkg))
+      stop(sprintf("✗ Error: package %s is required", pkg))
     }
   }
 
@@ -311,7 +316,7 @@ module14_volcano_plots <- function(
   library(openxlsx)
 
   if (length(expr_fdr_df_list_2nd_subsgs) == 0) {
-    stop("✗ 错误：Expr_FDR_df_list_2nd_SubSGs 为空，无法绘制火山图")
+    stop("✗ Error: Expr_FDR_df_list_2nd_SubSGs is empty; cannot draw volcano plots")
   }
 
   comparison_sets_overview <- if (is.null(comparison_sets)) {
@@ -320,7 +325,7 @@ module14_volcano_plots <- function(
     comparison_sets
   }
   if (length(comparison_sets_overview) == 0) {
-    stop("✗ 错误：无法构建 comparison_sets，请检查输入或提供自定义配置")
+    stop("✗ Error: comparison_sets could not be built; check inputs or provide a custom configuration")
   }
 
   module14_print_available_options(
@@ -330,7 +335,7 @@ module14_volcano_plots <- function(
   )
 
   available_versions <- names(expr_fdr_df_list_2nd_subsgs)
-  cat(sprintf("可用数据集（共 %d 个）：%s\n",
+  cat(sprintf("Available datasets (total %d): %s\n",
               length(available_versions),
               paste(available_versions, collapse = ", ")))
 
@@ -339,7 +344,7 @@ module14_volcano_plots <- function(
   }
   versions <- versions[versions %in% available_versions]
   if (length(versions) == 0) {
-    stop("✗ 错误：没有匹配的版本可供绘图，请检查 versions 参数")
+    stop("✗ Error: No matching versions available for plotting; check the versions parameter")
   }
 
   reference_df <- expr_fdr_df_list_2nd_subsgs[[versions[1]]]
@@ -348,11 +353,11 @@ module14_volcano_plots <- function(
   comparison_candidates <- module14_collect_comparisons(list(reference_df))
 
   if (length(comparison_candidates) == 0) {
-    stop("✗ 错误：未检测到 *_logFC 与 *_adj.P.Val 成对的列，无法绘制火山图")
+    stop("✗ Error: No paired *_logFC and *_adj.P.Val columns detected; cannot draw volcano plots")
   }
 
   if (!(annotation_column %in% colnames(reference_df))) {
-    stop(sprintf("✗ 错误：注释列 %s 不存在，请修改参数 annotation_column", annotation_column))
+    stop(sprintf("✗ Error: Annotation column %s does not exist; update the annotation_column parameter", annotation_column))
   }
 
   resolve_color_map <- function(color_map, column_name) {
@@ -360,11 +365,11 @@ module14_volcano_plots <- function(
       if (column_name %in% names(color_map)) {
         return(color_map[[column_name]])
       }
-      warning(sprintf("⚠ 提示：color_map 未包含 %s，尝试合并所有映射", column_name))
+      warning(sprintf("⚠ Note: color_map does not include %s; attempting to merge all mappings", column_name))
       color_map <- unlist(color_map, use.names = TRUE)
     }
     if (is.null(names(color_map))) {
-      stop("✗ 错误：annotation_color_map 需要具备名称，格式如 c('SGs'='red')")
+      stop("✗ Error: annotation_color_map must be named, e.g., c('SGs'='red')")
     }
     color_map
   }
@@ -376,11 +381,11 @@ module14_volcano_plots <- function(
     allowed_categories <- unique(comparison_metadata$category)
   }
   if (!is.null(allowed_categories) && is.null(comparison_metadata)) {
-    warning("⚠ 提示：提供了 comparison_categories 但缺少 comparison_metadata，忽略分类过滤")
+    warning("⚠ Note: comparison_categories supplied but comparison_metadata is missing; ignoring category filter")
     allowed_categories <- NULL
   }
   if (!is.null(allowed_categories)) {
-    cat(sprintf("\n[Module14] 只绘制以下 comparison 类别：%s\n",
+    cat(sprintf("\n[Module14] Only plotting the following comparison categories: %s\n",
                 paste(allowed_categories, collapse = ", ")))
   }
 
@@ -392,7 +397,7 @@ module14_volcano_plots <- function(
       return(NULL)
     }
     if (length(limit_vec) != 2 || any(!is.finite(limit_vec))) {
-      warning("⚠ 提示：坐标轴范围参数无效，使用默认值")
+      warning("⚠ Note: Axis range parameters are invalid; using default values")
       return(sort(fallback_vec))
     }
     sort(limit_vec)
@@ -417,7 +422,7 @@ module14_volcano_plots <- function(
 
   comparison_sets <- lapply(comparison_sets_overview, apply_axis_defaults)
   if (!is.list(comparison_sets) || length(comparison_sets) == 0) {
-    stop("✗ 错误：comparison_sets 需要是包含至少一个元素的列表")
+    stop("✗ Error: comparison_sets must be a list containing at least one element")
   }
   if (!is.null(allowed_categories) && !is.null(comparison_metadata)) {
     get_set_names <- function(sets) {
@@ -444,13 +449,13 @@ module14_volcano_plots <- function(
     filtered_sets <- Filter(has_allowed_category, comparison_sets)
 
     if (length(filtered_sets) == 0) {
-      stop("✗ 错误：comparison_categories 未匹配到任何比较组合，请检查配置")
+      stop("✗ Error: comparison_categories did not match any comparison combinations; check the configuration")
     }
 
     skipped_names <- setdiff(get_set_names(comparison_sets), get_set_names(filtered_sets))
     if (length(skipped_names) > 0) {
       cat(sprintf(
-        "[Module14] 根据 comparison_categories 跳过比较组合：%s\n",
+        "[Module14] Skipping comparison combinations per comparison_categories: %s\n",
         paste(skipped_names, collapse = ", ")
       ))
     }
@@ -463,7 +468,7 @@ module14_volcano_plots <- function(
     modes <- unique(modes)
     matched <- modes[modes %in% allowed]
     if (length(matched) == 0) {
-      stop("✗ 错误：label_mode 只支持 'with' 或 'without'")
+      stop("✗ Error: label_mode only supports 'with' or 'without'")
     }
     matched
   }
@@ -499,12 +504,12 @@ module14_volcano_plots <- function(
       required_fields <- c("name", "fc_cols", "fdr_cols")
       missing_fields <- required_fields[!required_fields %in% names(set)]
       if (length(missing_fields) > 0) {
-        warning(sprintf("⚠ 警告：比较配置缺少字段：%s，跳过该配置",
+        warning(sprintf("⚠ Warning: Comparison configuration is missing fields: %s; skipping this configuration",
                         paste(missing_fields, collapse = ", ")))
         next
       }
       if (length(set$fc_cols) != length(set$fdr_cols)) {
-        warning(sprintf("⚠ 警告：比较 %s 的 logFC/FDR 列数量不匹配，跳过", set$name))
+        warning(sprintf("⚠ Warning: logFC/FDR column counts mismatch for comparison %s; skipping", set$name))
         next
       }
 
@@ -530,7 +535,7 @@ module14_volcano_plots <- function(
           )
           if (length(missing_cols) > 0) {
             warning(sprintf(
-              "⚠ 警告：数据集 %s 缺少列 %s，跳过该数据集",
+              "⚠ Warning: Dataset %s is missing columns %s; skipping this dataset",
               dataset_name,
               paste(missing_cols, collapse = ", ")
             ))
@@ -561,7 +566,7 @@ module14_volcano_plots <- function(
             subset_df <- build_plot_data(df, fc_col, fdr_col)
             if (nrow(subset_df) == 0) {
               warning(sprintf(
-                "⚠ 警告：数据集 %s 在比较 %s 缺少有效的 (logFC, FDR) 数据",
+                "⚠ Warning: Dataset %s lacks valid (logFC, FDR) data for comparison %s",
                 dataset_name,
                 fc_col
               ))
@@ -595,6 +600,7 @@ module14_volcano_plots <- function(
               mutate(
                 is_significant = abs(.data[[fc_col]]) >= logfc_threshold &
                   abs(.data[[fdr_col]]) <= fdr_threshold,
+                point_alpha = ifelse(pass_threshold, 1, 0.5),
                 label_text = dplyr::case_when(
                   mode == "with" &
                     annotation_value %in% label_annotations &
@@ -630,7 +636,7 @@ module14_volcano_plots <- function(
               aes(x = .data[[fc_col]], y = log10FDR)
             ) +
               geom_point(
-                aes(color = point_color),
+                aes(color = point_color, alpha = point_alpha),
                 size = 0.7,
                 show.legend = FALSE
               ) +
@@ -645,6 +651,7 @@ module14_volcano_plots <- function(
                 color = "black"
               ) +
               scale_color_identity() +
+              scale_alpha_identity() +
               labs(
                 title = sprintf(
                   "Volcano Plot (%s | %s)\n%s\n%s",
@@ -668,15 +675,28 @@ module14_volcano_plots <- function(
             if (mode == "with") {
               label_data <- subset_df %>% filter(!is.na(label_text))
               if (nrow(label_data) > 0) {
-                p <- p +
-                  geom_text_repel(
-                    data = label_data,
-                    aes(label = label_text, color = label_color),
-                    size = label_size,
-                    segment.color = NA,
-                    show.legend = FALSE,
-                    max.overlaps = label_max_overlaps
-                  )
+                segment_col <- if (label_use_segments) label_segment_color else NA
+                if (label_use_ggrepel) {
+                  p <- p +
+                    geom_text_repel(
+                      data = label_data,
+                      aes(label = label_text, color = label_color),
+                      size = label_size,
+                      segment.color = segment_col,
+                      show.legend = FALSE,
+                      max.overlaps = label_max_overlaps,
+                      force = label_force,
+                      box.padding = label_box_padding
+                    )
+                } else {
+                  p <- p +
+                    geom_text(
+                      data = label_data,
+                      aes(label = label_text, color = label_color),
+                      size = label_size,
+                      show.legend = FALSE
+                    )
+                }
               }
             }
 
@@ -689,7 +709,7 @@ module14_volcano_plots <- function(
       })
 
       pdf_records[[label_suffix]][[set$name]] <- pdf_file
-      cat(sprintf("  ✓ 已生成火山图：%s\n", basename(pdf_file)))
+      cat(sprintf("  ✓ Generated volcano plot: %s\n", basename(pdf_file)))
     }
   }
 
@@ -724,12 +744,12 @@ module14_volcano_plots <- function(
       writeData(wb, sheet = sheet_name, x = volcano_export_data[[key]])
     }
     saveWorkbook(wb, file = volcano_source_file, overwrite = TRUE)
-    cat(sprintf("  ✓ 导出火山图源数据：%s\n", basename(volcano_source_file)))
+    cat(sprintf("  ✓ Exported volcano plot source data: %s\n", basename(volcano_source_file)))
   } else {
-    cat("  ⚠ 提示：未生成任何火山图源数据导出（可能没有有效比较）\n")
+    cat("  ⚠ Note: No volcano plot source data exported (possibly no valid comparisons)\n")
   }
 
-  cat("=== Module 14 完成 ===\n")
+  cat("=== Module 14 completed ===\n")
 
   return(list(
     versions = versions,

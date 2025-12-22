@@ -98,7 +98,7 @@ module05_imputation <- function(dir_config,
               paste(nocat_groups, collapse = ", ")))
   
   # 3. 定义填补函数 ####
-  impute_missing_values <- function(data, data_name, nocat_groups, impute_cat) {
+  impute_missing_values <- function(data, data_name, nocat_groups, cat_groups, impute_cat) {
     
     cat(sprintf("\n  处理: %s\n", data_name))
     
@@ -150,8 +150,8 @@ module05_imputation <- function(dir_config,
           # NoCat组：n_valid=2用平均值，<2用Perseus
           group %in% nocat_groups & n_valid == 2 & is.na(intensity) ~ mean_valid_within_group,
           group %in% nocat_groups & n_valid < 2 & is.na(intensity) ~ rnorm(1, mean = imputation_mean, sd = imputation_sd),
-          # Cat组：根据用户选择
-          impute_cat & !(group %in% nocat_groups) & n_valid == 2 & is.na(intensity) ~ mean_valid_within_group,
+          # Cat组：根据用户选择，n_valid=2时用平均值填补
+          impute_cat & group %in% cat_groups & n_valid == 2 & is.na(intensity) ~ mean_valid_within_group,
           # 其他情况保持原值
           TRUE ~ intensity
         )
@@ -182,7 +182,7 @@ module05_imputation <- function(dir_config,
     data <- standardized_data_list[[i]]
     
     # 执行填补
-    data_imputed <- impute_missing_values(data, data_name, nocat_groups, impute_cat_mean)
+    data_imputed <- impute_missing_values(data, data_name, nocat_groups, cat_groups, impute_cat_mean)
     
     # 保存到列表
     imputed_name <- paste0(data_name, "_Imputed")
@@ -229,7 +229,6 @@ module05_imputation <- function(dir_config,
     
     # 填补前
     boxplot(original_data[, data_cols], 
-            log = "y", 
             cex.axis = 0.4, 
             las = 2, 
             main = paste0(original_name, "\n(Before Imputation)"),
@@ -238,7 +237,6 @@ module05_imputation <- function(dir_config,
     
     # 填补后
     boxplot(imputed_data[, data_cols], 
-            log = "y", 
             cex.axis = 0.4, 
             las = 2, 
             main = paste0(imputed_name, "\n(After Imputation)"),

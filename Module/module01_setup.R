@@ -1,18 +1,18 @@
 # ============================================================================
-# Module 1: Environment Initialization
+# Module 1: Environment Setup
 # ============================================================================
-# Functions:
+# Features:
 #   1. Check required directories (Reference, Rawdata)
-#   2. Automatically create optional directories (Output, Module, Dev)
-#   3. Save configuration information
-#
-# Input: dir_config (directory configuration list)
+#   2. Auto-create optional directories (Output, Module, Dev)
+#   3. Save configuration info
+# 
+# Input: dir_config (list of directory paths)
 # Output: config.RData
 # ============================================================================
 
 module01_setup <- function(dir_config) {
   
-  cat("Starting environment initialization...\n")
+  cat("Starting environment setup...\n")
   
   # --------------------------------------------------------------------------
   # 1. Check required directories
@@ -22,28 +22,28 @@ module01_setup <- function(dir_config) {
   for (dir_name in required_dirs) {
     dir_path <- dir_config[[dir_name]]
     if (!dir.exists(dir_path)) {
-      stop(sprintf("✗ Error: Required directory does not exist - %s\nPlease create this directory and try again!", dir_path))
+      stop(sprintf("✗ Error: required directory does not exist - %s\nPlease create it and retry!", dir_path))
     }
-    cat(sprintf("✓ Checking required directory: %s\n", dir_path))
+    cat(sprintf("✓ Checked required directory: %s\n", dir_path))
   }
   
   # --------------------------------------------------------------------------
-  # 2. Automatically create optional directories
+  # 2. Auto-create optional directories
   # --------------------------------------------------------------------------
   optional_dirs <- c("output", "module", "dev")
   
   for (dir_name in optional_dirs) {
-    dir_path <- dir_config[[dir_name]]
-    if (!dir.exists(dir_path)) {
-      dir.create(dir_path, recursive = TRUE)
-      cat(sprintf("✓ Creating directory: %s\n", dir_path))
-    } else {
-      cat(sprintf("✓ Directory already exists: %s\n", dir_path))
+      dir_path <- dir_config[[dir_name]]
+      if (!dir.exists(dir_path)) {
+        dir.create(dir_path, recursive = TRUE)
+        cat(sprintf("✓ Created directory: %s\n", dir_path))
+      } else {
+        cat(sprintf("✓ Directory already exists: %s\n", dir_path))
+      }
     }
-  }
   
   # --------------------------------------------------------------------------
-  # 3. Save all environment variables to working directory
+  # 3. Save all environment variables to the working directory
   # --------------------------------------------------------------------------
   setwd(dir_config$root)
   
@@ -55,10 +55,10 @@ module01_setup <- function(dir_config) {
   )
   
   # --------------------------------------------------------------------------
-  # 4. Print summary information
+  # 4. Print summary info
   # --------------------------------------------------------------------------
   cat("\n========================================\n")
-  cat("Environment initialization completed\n")
+  cat("Environment setup complete\n")
   cat("========================================\n")
   cat(sprintf("Working directory: %s\n", dir_config$root))
   cat(sprintf("Timestamp: %s\n", config$timestamp))

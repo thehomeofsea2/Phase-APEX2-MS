@@ -37,9 +37,109 @@ module02_read_and_generate_template <- function(dir_config, file_pattern = "_mat
   }
   
   # 读取第一个文件（如有多个文件，可扩展此逻辑）
-  data_raw <- read_tsv(myfiles[1], show_col_types = FALSE)
-  cat(sprintf("\n✓ 已读取文件: %s\n", myfiles[1]))
+  detect_delim <- function(file_path, candidates = c("\t", ",", ";")) {
+    lines_preview <- readr::read_lines(file_path, n_max = 20)
+    if (length(lines_preview) == 0) return("\t")
+    counts <- vapply(
+      candidates,
+      function(d) sum(lengths(regmatches(lines_preview, gregexpr(d, lines_preview, fixed = TRUE)))),
+      numeric(1)
+    )
+    best_idx <- which.max(counts)
+    if (all(counts == 0)) return("\t")
+    candidates[best_idx]
+  }
+  
+  target_file <- myfiles[1]
+  delim <- detect_delim(target_file)
+  cat(sprintf("自动检测到分隔符: %s\n", ifelse(delim == "\t", "\\t", delim)))
+  
+  data_raw <- readr::read_delim(
+    target_file,
+    delim = delim,
+    show_col_types = FALSE,
+    trim_ws = TRUE
+  )
+  
+  if (ncol(data_raw) == 1 && delim != ",") {
+    cat("⚠ 检测到仅一列，尝试使用逗号重新读取...\n")
+    data_raw <- readr::read_csv(target_file, show_col_types = FALSE, trim_ws = TRUE)
+  }
+  
+  cat(sprintf("\n✓ 已读取文件: %s\n", target_file))
   cat(sprintf("  维度: %d 行 × %d 列\n", nrow(data_raw), ncol(data_raw)))
+  
+  # --------------------------------------------------------------------------
+  # 基础数据清洗
+  # --------------------------------------------------------------------------
+  cat("\n----------------------------------------\n")
+  cat("基础数据清洗\n")
+  cat("----------------------------------------\n")
+  
+  # 标准化列名（去除首尾空格）
+  colnames(data_raw) <- trimws(colnames(data_raw))
+  if (colnames(data_raw)[1] != "Gene") {
+    cat(sprintf("第一列列名由 '%s' 重命名为 'Gene'\n", colnames(data_raw)[1]))
+    colnames(data_raw)[1] <- "Gene"
+  }
+  
+  data_cols <- setdiff(colnames(data_raw), "Gene")
+  
+  # 将数据列转为数值并去除NaN
+  if (length(data_cols) > 0) {
+    data_raw <- data_raw %>%
+      mutate(across(all_of(data_cols), ~ {
+        # 保留数值，其他类型先修剪空格再转换
+        if (is.numeric(.)) return(.)
+        suppressWarnings(as.numeric(trimws(as.character(.))))
+      })) %>%
+      mutate(across(all_of(data_cols), ~ na_if(., NaN)))
+  }
+  
+  # 将小于1的非NA值替换为1（防止log2转化后出现负值）
+  if (length(data_cols) > 0) {
+    # 统计需要替换的值数量
+    n_replaced <- 0
+    for (col in data_cols) {
+      col_data <- data_raw[[col]]
+      mask <- !is.na(col_data) & col_data < 1
+      n_replaced <- n_replaced + sum(mask)
+    }
+    
+    if (n_replaced > 0) {
+      cat(sprintf("✓ 将 %d 个小于1的非NA值替换为1（防止log2负值）\n", n_replaced))
+      data_raw <- data_raw %>%
+        mutate(across(all_of(data_cols), ~ {
+          ifelse(!is.na(.) & . < 1, 1, .)
+        }))
+    } else {
+      cat("✓ 数据检查：无需替换（所有非NA值均 >= 1）\n")
+    }
+  }
+  
+  # 清理Gene列（空值、分号、去重）
+  data_raw <- data_raw %>%
+    mutate(Gene = trimws(as.character(Gene))) %>%
+    filter(!is.na(Gene) & Gene != "") %>%
+    filter(!grepl("[;；]", Gene))
+  
+  dup_removed <- nrow(data_raw) - nrow(data_raw %>% distinct(Gene, .keep_all = TRUE))
+  data_raw <- data_raw %>% distinct(Gene, .keep_all = TRUE)
+  if (dup_removed > 0) {
+    cat(sprintf("✓ 已移除 %d 行重复Gene\n", dup_removed))
+  }
+  
+  # 移除数据列全为NA的行
+  if (length(data_cols) > 0 && nrow(data_raw) > 0) {
+    all_na_mask <- apply(select(data_raw, all_of(data_cols)), 1, function(x) all(is.na(x)))
+    removed_all_na <- sum(all_na_mask)
+    if (removed_all_na > 0) {
+      cat(sprintf("✓ 已移除 %d 行数据列全为NA\n", removed_all_na))
+      data_raw <- data_raw[!all_na_mask, , drop = FALSE]
+    }
+  }
+  
+  cat(sprintf("  清洗后维度: %d 行 × %d 列\n", nrow(data_raw), ncol(data_raw)))
   
   # --------------------------------------------------------------------------
   # 步骤2: 自动清理列名

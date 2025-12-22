@@ -1,27 +1,28 @@
 ## ============================================================================
-## Module 13: Sub注释模块（SubSG / SubNucleolus）
-## 对齐 CleanCode.R (2708-2742) 与 20250725.R (3530-3593) 逻辑
+## Module 13: Sub-annotation module (SubSG / SubNucleolus)
+## Aligns with CleanCode.R (2708-2742) and 20250725.R (3530-3593) logic
 ## ============================================================================
 
 module13_subsg_annotation <- function(
     dir_config,
     expr_fdr_df_list_2nd,
     annotation_references,
-    mode = c("subSG", "subNucleolus"),
+    mode = c("subSG", "subNucleolus", "none"),
     target_column = NULL,
     output_prefix = "Module13",
     levels_order = NULL,
     forstep16_versions = NULL
 ) {
 
-  mode <- match.arg(mode)
-  mode_label <- ifelse(mode == "subNucleolus", "SubNucleolus", "SubSG")
-  cat(sprintf("\n=== Module 13: %s 注释 ===\n\n", mode_label))
+  mode <- if (is.null(mode)) "none" else match.arg(mode)
+  skip_annotation <- identical(mode, "none")
+  mode_label <- if (skip_annotation) "NoSubAnnotation" else ifelse(mode == "subNucleolus", "SubNucleolus", "SubSG")
+  cat(sprintf("\n=== Module 13: %s annotation ===\n\n", mode_label))
 
   required_pkgs <- c("dplyr", "stringr", "purrr", "readr")
   for (pkg in required_pkgs) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
-      stop(sprintf("✗ 错误：需要安装 %s 包", pkg))
+      stop(sprintf("✗ Error: package %s is required", pkg))
     }
   }
 
@@ -33,19 +34,19 @@ module13_subsg_annotation <- function(
   if (!exists("load_HPA_annotations")) {
     module03_path <- file.path(dir_config$module, "module03_annotation.R")
     if (!file.exists(module03_path)) {
-      stop("✗ 错误：无法找到 module03_annotation.R 以加载HPA逻辑")
+      stop("✗ Error: module03_annotation.R not found for loading HPA logic")
     }
     source(module03_path)
   }
 
   if (length(expr_fdr_df_list_2nd) == 0) {
-    stop("✗ 错误：expr_fdr_df_list_2nd 为空，无法进行 SubSG 注释")
+    stop("✗ Error: expr_fdr_df_list_2nd is empty; cannot run SubSG annotation")
   }
-  if (is.null(annotation_references)) {
-    stop("✗ 错误：annotation_references 为空，请先运行 Module 3")
+  if (is.null(annotation_references) && !skip_annotation) {
+    stop("✗ Error: annotation_references is empty; please run Module 3 first")
   }
 
-  if (is.null(target_column)) {
+  if (is.null(target_column) && !skip_annotation) {
     target_column <- if (mode == "subNucleolus") {
       "Sub_HPA_Localization"
     } else {
@@ -53,7 +54,7 @@ module13_subsg_annotation <- function(
     }
   }
 
-  if (is.null(levels_order)) {
+  if (is.null(levels_order) && !skip_annotation) {
     levels_order <- if (mode == "subNucleolus") {
       c(
         "Other",
@@ -82,67 +83,76 @@ module13_subsg_annotation <- function(
     }
   }
 
-  if (mode == "subSG") {
-    halo_refs <- annotation_references$SGs_refs
-    if (is.null(halo_refs$HaloMap_SGs)) {
-      stop("✗ 错误：未找到 HaloMap_SGs 参考数据，请检查 Reference 目录或 Module 3 配置")
-    }
-  }
-
-  halomap_sg_genes <- if (mode == "subSG") halo_refs$HaloMap_SGs$Known.SG.Reference else NULL
-
-  hpa_mode <- if (mode == "subNucleolus") "Nucleolus" else "SG"
-  hpa_sets <- load_HPA_annotations(dir_config, mode = hpa_mode)
-
-  nuclear_genes <- hpa_sets$Nuclear$Gene
-  cytosol_genes <- hpa_sets$Cytosol$Gene
-  nuclear_cytosol_genes <- hpa_sets$Nuclear_Cytosol$Gene
-  mito_genes <- annotation_references$MitoCarta_anno$Symbol
-
+  halomap_sg_genes <- NULL
+  hpa_sets <- NULL
+  nuclear_genes <- cytosol_genes <- nuclear_cytosol_genes <- mito_genes <- NULL
   subn_sets <- NULL
-  if (mode == "subNucleolus") {
-    subn_sets <- build_subnucleolus_sets(dir_config, hpa_sets)
+
+  if (!skip_annotation) {
+    if (mode == "subSG") {
+      halo_refs <- annotation_references$SGs_refs
+      if (is.null(halo_refs$HaloMap_SGs)) {
+        stop("✗ Error: HaloMap_SGs reference not found; check the Reference directory or Module 3 configuration")
+      }
+      halomap_sg_genes <- halo_refs$HaloMap_SGs$Known.SG.Reference
+    }
+
+    hpa_mode <- if (mode == "subNucleolus") "Nucleolus" else "SG"
+    hpa_sets <- load_HPA_annotations(dir_config, mode = hpa_mode)
+
+    nuclear_genes <- hpa_sets$Nuclear$Gene
+    cytosol_genes <- hpa_sets$Cytosol$Gene
+    nuclear_cytosol_genes <- hpa_sets$Nuclear_Cytosol$Gene
+    mito_genes <- annotation_references$MitoCarta_anno$Symbol
+
+    if (mode == "subNucleolus") {
+      subn_sets <- build_subnucleolus_sets(dir_config, hpa_sets)
+    }
   }
 
   annotated_list <- list()
   output_files <- list()
 
   for (dataset_name in names(expr_fdr_df_list_2nd)) {
-    cat(sprintf("[Module13] 处理数据集：%s\n", dataset_name))
+    cat(sprintf("[Module13] Processing dataset: %s\n", dataset_name))
     df <- expr_fdr_df_list_2nd[[dataset_name]]
 
     if (!("Gene" %in% colnames(df))) {
-      warning(sprintf("⚠ 警告：%s 缺少 Gene 列，跳过", dataset_name))
+      warning(sprintf("⚠ Warning: %s is missing the Gene column; skipping", dataset_name))
       next
     }
 
     target_exists <- target_column %in% colnames(df)
 
-    mutated_df <- if (mode == "subNucleolus") {
-      annotate_subnucleolus_df(
-        df,
-        target_column,
-        subn_sets,
-        mito_genes
+    if (!skip_annotation) {
+      mutated_df <- if (mode == "subNucleolus") {
+        annotate_subnucleolus_df(
+          df,
+          target_column,
+          subn_sets,
+          mito_genes
+        )
+      } else {
+        annotate_subsg_df(
+          df,
+          target_column,
+          halomap_sg_genes,
+          nuclear_genes,
+          cytosol_genes,
+          nuclear_cytosol_genes,
+          mito_genes
+        )
+      }
+
+      mutated_df[[target_column]] <- factor(
+        mutated_df[[target_column]],
+        levels = levels_order
       )
     } else {
-      annotate_subsg_df(
-        df,
-        target_column,
-        halomap_sg_genes,
-        nuclear_genes,
-        cytosol_genes,
-        nuclear_cytosol_genes,
-        mito_genes
-      )
+      mutated_df <- df
     }
 
-    mutated_df[[target_column]] <- factor(
-      mutated_df[[target_column]],
-      levels = levels_order
-    )
-
-    if (!target_exists) {
+    if (!skip_annotation && !target_exists) {
       loc_cols <- grep("_Localization$", colnames(mutated_df), value = TRUE)
       loc_cols <- loc_cols[loc_cols != target_column]
 
@@ -164,16 +174,16 @@ module13_subsg_annotation <- function(
         "%s_%s_%s.csv",
         output_prefix,
         dataset_name,
-        ifelse(mode == "subNucleolus", "SubNucleolus", "SubSGs")
+        if (skip_annotation) "NoSubAnno" else ifelse(mode == "subNucleolus", "SubNucleolus", "SubSGs")
       )
     )
     write.csv(mutated_df, output_file, row.names = FALSE)
     output_files[[dataset_name]] <- output_file
-    cat(sprintf("  ✓ 导出 %s 注释结果：%s\n", mode_label, basename(output_file)))
+    cat(sprintf("  ✓ Exported %s annotation results: %s\n", mode_label, basename(output_file)))
   }
 
   if (length(annotated_list) == 0) {
-    warning("⚠ 提示：未生成任何注释结果")
+    warning("⚠ Note: No annotation results were generated")
   }
 
   ForStep16 <- annotated_list
@@ -182,7 +192,7 @@ module13_subsg_annotation <- function(
     keep <- forstep16_versions[forstep16_versions %in% existing]
     missing <- setdiff(forstep16_versions, existing)
     if (length(missing) > 0) {
-      warning(sprintf("⚠ 警告：以下数据集不存在，无法加入 ForStep16：%s",
+      warning(sprintf("⚠ Warning: The following datasets do not exist and cannot be added to ForStep16: %s",
                       paste(missing, collapse = ", ")))
     }
     if (length(keep) > 0) {
@@ -195,8 +205,8 @@ module13_subsg_annotation <- function(
     ForStep16 <- annotated_list
   }
 
-  cat("\n=== Module 13 完成 ===\n")
-  cat(sprintf("✓ 处理数据集数量：%d\n", length(annotated_list)))
+  cat("\n=== Module 13 completed ===\n")
+  cat(sprintf("✓ Number of processed datasets: %d\n", length(annotated_list)))
 
   return(list(
     Expr_FDR_df_list_2nd_SubSGs = annotated_list,
@@ -235,13 +245,13 @@ annotate_subsg_df <- function(df,
 build_subnucleolus_sets <- function(dir_config, hpa_sets) {
   hpa_file <- file.path(dir_config$reference, "proteinatlas.tsv")
   if (!file.exists(hpa_file)) {
-    stop(sprintf("✗ 错误：未找到HPA文件 - %s", hpa_file))
+    stop(sprintf("✗ Error: HPA file not found - %s", hpa_file))
   }
 
-  cat("  - 读取HPA数据构建SubNucleolus参考\n")
+  cat("  - Reading HPA data to build SubNucleolus reference\n")
   hpa_data <- readr::read_tsv(hpa_file, show_col_types = FALSE)
   if (!("Reliability (IF)" %in% names(hpa_data))) {
-    stop("✗ 错误：HPA数据缺少 'Reliability (IF)' 列")
+    stop("✗ Error: HPA data is missing the 'Reliability (IF)' column")
   }
 
   hpa_data <- hpa_data %>%
@@ -267,7 +277,7 @@ build_subnucleolus_sets <- function(dir_config, hpa_sets) {
   nucleolus_df <- hpa_sets$Nucleolus
   nucleolus_main_df <- hpa_sets$Nucleolus_main
   if (is.null(nucleolus_df) || is.null(nucleolus_main_df)) {
-    stop("✗ 错误：未在 annotation_references 中找到 Nucleolus 注释，请在 Module 3 中启用相应模式")
+    stop("✗ Error: Nucleolus annotation not found in annotation_references; enable the corresponding mode in Module 3")
   }
 
   list(

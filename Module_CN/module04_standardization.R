@@ -1,7 +1,100 @@
 # Module 04: 数据标准化
-# 功能：Log2转化、全局标准化（QNorm/MNorm）、局部标准化（Local QNorm/MNorm）
+# 功能：Log2转化、全局标准化（QNorm/QNorm_Fix/QNorm_Limma/VSN/RefNorm/MNorm）、局部标准化（Local QNorm/QNorm_Fix/QNorm_Limma/VSN/RefNorm/MNorm）
 # 作者：CodeNorm Pipeline
 # 日期：2024
+
+# 分位数标准化的NA安全版本：先以每列中位数填补，再标准化，最后恢复NA
+quantile_normalize_preserve_na <- function(mat) {
+  na_mask <- is.na(mat)
+  col_medians <- apply(mat, 2, function(x) {
+    med <- median(x, na.rm = TRUE)
+    if (is.na(med)) 0 else med
+  })
+  
+  filled_mat <- mat
+  for (i in seq_len(ncol(filled_mat))) {
+    filled_mat[is.na(filled_mat[, i]), i] <- col_medians[i]
+  }
+  
+  normalized <- normalize.quantiles(filled_mat)
+  colnames(normalized) <- colnames(mat)
+  rownames(normalized) <- rownames(mat)
+  
+  normalized[na_mask] <- NA
+  normalized
+}
+
+# 将目标列对齐到参考分布（RefNorm辅助函数）
+align_to_reference <- function(vec, ref_vec) {
+  if (all(is.na(vec))) return(vec)
+  ref_sorted <- sort(ref_vec, na.last = NA)
+  if (length(ref_sorted) == 0) return(vec)
+  ref_probs <- seq(0, 1, length.out = length(ref_sorted))
+  
+  idx <- which(!is.na(vec))
+  if (length(idx) == 0) return(vec)
+  
+  vec_non_na <- vec[idx]
+  vec_order <- order(vec_non_na)
+  
+  target_vals <- approx(ref_probs, ref_sorted, xout = seq(0, 1, length.out = length(idx)), rule = 2)$y
+  
+  new_vals <- vec_non_na
+  new_vals[vec_order] <- target_vals
+  
+  vec[idx] <- new_vals
+  vec
+}
+
+# 选择参考样本（RefNorm）
+choose_reference_sample <- function(cols, data_matrix, sampleGroup, context_only_control = FALSE) {
+  ctx_map <- setNames(sampleGroup$Context, sampleGroup$FinalName)
+  contexts <- ctx_map[cols]
+  valid_counts <- apply(data_matrix[, cols, drop = FALSE], 2, function(x) sum(!is.na(x)))
+  
+  pick_by_max <- function(pool_cols) {
+    if (length(pool_cols) == 0) return(NULL)
+    pool_counts <- valid_counts[pool_cols]
+    pool_cols[which.max(pool_counts)]
+  }
+  
+  if (context_only_control) {
+    med_count <- median(valid_counts, na.rm = TRUE)
+    if (is.na(med_count)) med_count <- 0
+    diffs <- abs(valid_counts - med_count)
+    ref_col <- cols[which.min(diffs)]
+    return(ref_col)
+  }
+  
+  exp_cols <- cols[contexts == "Experiment"]
+  ref_col <- pick_by_max(exp_cols)
+  if (is.null(ref_col)) {
+    ref_col <- pick_by_max(cols)
+  }
+  ref_col
+}
+
+# VSN转换，保持全NA行位置（避免警告“only NA elements”）
+vsn_transform_preserve_na <- function(mat) {
+  if (!require(vsn, quietly = TRUE)) {
+    stop("❌ 需要安装vsn包：BiocManager::install('vsn')")
+  }
+  row_all_na <- apply(mat, 1, function(x) all(is.na(x)))
+  mat_use <- mat[!row_all_na, , drop = FALSE]
+  if (nrow(mat_use) == 0) return(mat)
+  min_val <- suppressWarnings(min(mat_use, na.rm = TRUE))
+  if (is.finite(min_val) && min_val <= 0) {
+    shift <- abs(min_val) + 1e-3
+    mat_use <- mat_use + shift
+  }
+  fit_vsn <- vsn::vsn2(mat_use)
+  transformed <- predict(fit_vsn, newdata = mat_use)
+  out <- matrix(NA_real_, nrow(mat), ncol(mat), dimnames = dimnames(mat))
+  out[!row_all_na, ] <- transformed
+  colnames(out) <- colnames(mat)
+  rownames(out) <- rownames(mat)
+  out
+}
 
 #' Module 04: 数据标准化
 #' 
@@ -12,9 +105,15 @@
 #' @param data_annotated 带注释的数据框（来自Module 3）
 #' @param sampleGroup 样本分组信息（来自Module 2）
 #' @param norm_types 字符向量，指定需要的标准化类型
-#'   可选值："noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm"
-#'   默认：c("noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm")
-#'   注意：必须至少包含一个全局标准化（Global_QNorm或Global_MNorm）
+#'   可选值："noNorm", "Global_QNorm", "Global_QNorm_Fix", "Global_QNorm_Limma",
+#'            "Global_VSN", "Global_RefNorm", "Global_MNorm",
+#'            "Local_QNorm", "Local_QNorm_Fix", "Local_QNorm_Limma",
+#'            "Local_VSN", "Local_RefNorm", "Local_MNorm"
+#'   默认：c("noNorm", "Global_QNorm", "Global_QNorm_Fix", "Global_QNorm_Limma",
+#'            "Global_VSN", "Global_RefNorm", "Global_MNorm",
+#'            "Local_QNorm", "Local_QNorm_Fix", "Local_QNorm_Limma",
+#'            "Local_VSN", "Local_RefNorm", "Local_MNorm")
+#'   注意：必须至少包含一个全局标准化（Global_QNorm / Global_QNorm_Fix / Global_QNorm_Limma / Global_VSN / Global_RefNorm / Global_MNorm）
 #' 
 #' @return 列表，包含：
 #'   - standardized_data_list: 包含所有标准化版本的列表
@@ -30,8 +129,11 @@
 module04_standardization <- function(dir_config, 
                                      data_annotated, 
                                      sampleGroup,
-                                     norm_types = c("noNorm", "Global_QNorm", "Global_MNorm", 
-                                                   "Local_QNorm", "Local_MNorm")) {
+                                     norm_types = c("noNorm",
+                                                   "Global_QNorm", "Global_QNorm_Fix", "Global_QNorm_Limma",
+                                                   "Global_VSN", "Global_RefNorm", "Global_MNorm",
+                                                   "Local_QNorm", "Local_QNorm_Fix", "Local_QNorm_Limma",
+                                                   "Local_VSN", "Local_RefNorm", "Local_MNorm")) {
   
   cat("\n=== Module 04: 数据标准化 ===\n")
   
@@ -57,16 +159,23 @@ module04_standardization <- function(dir_config,
   if (!"bioGroup" %in% colnames(sampleGroup)) {
     stop("❌ sampleGroup必须包含bioGroup列")
   }
+  if (any(c("Global_RefNorm", "Local_RefNorm") %in% norm_types) && !"Context" %in% colnames(sampleGroup)) {
+    stop("❌ 使用RefNorm需要sampleGroup包含Context列")
+  }
   
   # 验证norm_types
-  valid_types <- c("noNorm", "Global_QNorm", "Global_MNorm", "Local_QNorm", "Local_MNorm")
+  valid_types <- c("noNorm",
+                   "Global_QNorm", "Global_QNorm_Fix", "Global_QNorm_Limma",
+                   "Global_VSN", "Global_RefNorm", "Global_MNorm",
+                   "Local_QNorm", "Local_QNorm_Fix", "Local_QNorm_Limma",
+                   "Local_VSN", "Local_RefNorm", "Local_MNorm")
   if (!all(norm_types %in% valid_types)) {
     stop("❌ norm_types包含无效值，有效值为：", paste(valid_types, collapse = ", "))
   }
   
   # 检查是否至少有一个全局标准化
-  if (!any(c("Global_QNorm", "Global_MNorm") %in% norm_types)) {
-    stop("❌ 必须至少包含一个全局标准化方法（Global_QNorm或Global_MNorm）")
+  if (!any(c("Global_QNorm", "Global_QNorm_Fix", "Global_QNorm_Limma", "Global_VSN", "Global_RefNorm", "Global_MNorm") %in% norm_types)) {
+    stop("❌ 必须至少包含一个全局标准化方法（Global_QNorm / Global_QNorm_Fix / Global_QNorm_Limma / Global_VSN / Global_RefNorm / Global_MNorm）")
   }
   
   cat("✓ 输入验证通过\n")
@@ -149,7 +258,6 @@ module04_standardization <- function(dir_config,
   pdf_file <- file.path(dir_config$output, "Module04_log2_boxplot.pdf")
   pdf(pdf_file, width = 10, height = 5)
   boxplot(data_log2[, data_cols], 
-          log = "y", 
           cex.axis = 0.4, 
           las = 2, 
           main = "Log2 Transformed Data",
@@ -173,7 +281,7 @@ module04_standardization <- function(dir_config,
   }
   
   # 5. 全局标准化 ####
-  if (any(c("Global_QNorm", "Global_MNorm") %in% norm_types)) {
+  if (any(c("Global_QNorm", "Global_QNorm_Fix", "Global_QNorm_Limma", "Global_VSN", "Global_RefNorm", "Global_MNorm") %in% norm_types)) {
     cat("\n[4] 执行全局标准化...\n")
     
     # 加载preprocessCore包
@@ -200,6 +308,87 @@ module04_standardization <- function(dir_config,
       csv_file <- file.path(dir_config$output, "Module04_Global_QNorm.csv")
       write.csv(data_qnorm, csv_file, row.names = FALSE)
       cat(sprintf("  ✓ Global_QNorm完成，已保存: %s\n", csv_file))
+    }
+    
+    # 5.1b Global Quantile Normalization (NA安全版本) ####
+    if ("Global_QNorm_Fix" %in% norm_types) {
+      cat("  执行Global Quantile Normalization（QNorm_Fix，伪装NA后恢复）...\n")
+      
+      normalized_matrix_fix <- quantile_normalize_preserve_na(data_matrix)
+      colnames(normalized_matrix_fix) <- data_cols
+      
+      data_qnorm_fix <- data_log2
+      data_qnorm_fix[, data_cols] <- as.data.frame(normalized_matrix_fix)
+      
+      standardized_data_list[["Global_QNorm_Fix"]] <- data_qnorm_fix
+      
+      # 保存CSV
+      csv_file <- file.path(dir_config$output, "Module04_Global_QNorm_Fix.csv")
+      write.csv(data_qnorm_fix, csv_file, row.names = FALSE)
+      cat(sprintf("  ✓ Global_QNorm_Fix完成，已保存: %s\n", csv_file))
+    }
+    
+    # 5.1c Global Quantile Normalization (limma, NA安全) ####
+    if ("Global_QNorm_Limma" %in% norm_types) {
+      cat("  执行Global Quantile Normalization（limma）...\n")
+      if (!require(limma, quietly = TRUE)) {
+        stop("❌ 需要安装limma包：BiocManager::install('limma')")
+      }
+      normalized_matrix_limma <- limma::normalizeBetweenArrays(data_matrix, method = "quantile")
+      colnames(normalized_matrix_limma) <- data_cols
+      
+      data_qnorm_limma <- data_log2
+      data_qnorm_limma[, data_cols] <- as.data.frame(normalized_matrix_limma)
+      
+      standardized_data_list[["Global_QNorm_Limma"]] <- data_qnorm_limma
+      
+      csv_file <- file.path(dir_config$output, "Module04_Global_QNorm_Limma.csv")
+      write.csv(data_qnorm_limma, csv_file, row.names = FALSE)
+      cat(sprintf("  ✓ Global_QNorm_Limma完成，已保存: %s\n", csv_file))
+    }
+    
+    # 5.1d Global VSN ####
+    if ("Global_VSN" %in% norm_types) {
+      cat("  执行Global VSN...\n")
+      vsn_input <- as.matrix(data_annotated[, data_cols])
+      normalized_matrix_vsn <- vsn_transform_preserve_na(vsn_input)
+      colnames(normalized_matrix_vsn) <- data_cols
+      
+      data_vsn <- data_log2
+      data_vsn[, data_cols] <- as.data.frame(normalized_matrix_vsn)
+      
+      standardized_data_list[["Global_VSN"]] <- data_vsn
+      
+      csv_file <- file.path(dir_config$output, "Module04_Global_VSN.csv")
+      write.csv(data_vsn, csv_file, row.names = FALSE)
+      cat(sprintf("  ✓ Global_VSN完成，已保存: %s\n", csv_file))
+    }
+    
+    # 5.1e Global Reference Normalization（上下文感知） ####
+    if ("Global_RefNorm" %in% norm_types) {
+      cat("  执行Global Reference Normalization（上下文感知）...\n")
+      
+      sample_ctx_map <- setNames(sampleGroup$Context, sampleGroup$FinalName)
+      ref_col <- choose_reference_sample(data_cols, data_matrix, sampleGroup, context_only_control = FALSE)
+      if (is.null(ref_col)) {
+        stop("❌ 无法选择参考样本（Global_RefNorm）")
+      }
+      cat(sprintf("    参考样本: %s (Context=%s)\n", ref_col, sample_ctx_map[[ref_col]]))
+      
+      ref_vec <- data_matrix[, ref_col]
+      refnorm_mat <- data_matrix
+      for (cn in data_cols) {
+        refnorm_mat[, cn] <- align_to_reference(refnorm_mat[, cn], ref_vec)
+      }
+      
+      data_refnorm <- data_log2
+      data_refnorm[, data_cols] <- as.data.frame(refnorm_mat)
+      
+      standardized_data_list[["Global_RefNorm"]] <- data_refnorm
+      
+      csv_file <- file.path(dir_config$output, "Module04_Global_RefNorm.csv")
+      write.csv(data_refnorm, csv_file, row.names = FALSE)
+      cat(sprintf("  ✓ Global_RefNorm完成，已保存: %s\n", csv_file))
     }
     
     # 5.2 Global Median Normalization ####
@@ -234,10 +423,9 @@ module04_standardization <- function(dir_config,
     pdf_file <- file.path(dir_config$output, "Module04_Global_Norm_boxplot.pdf")
     pdf(pdf_file, width = 10, height = 5)
     
-    for (norm_name in c("Global_QNorm", "Global_MNorm")) {
+    for (norm_name in c("Global_QNorm", "Global_QNorm_Fix", "Global_QNorm_Limma", "Global_VSN", "Global_RefNorm", "Global_MNorm")) {
       if (norm_name %in% names(standardized_data_list)) {
         boxplot(standardized_data_list[[norm_name]][, data_cols], 
-                log = "y", 
                 cex.axis = 0.4, 
                 las = 2, 
                 main = norm_name,
@@ -256,7 +444,7 @@ module04_standardization <- function(dir_config,
   }
   
   # 6. 局部标准化 ####
-  if (any(c("Local_QNorm", "Local_MNorm") %in% norm_types)) {
+  if (any(c("Local_QNorm", "Local_QNorm_Fix", "Local_QNorm_Limma", "Local_VSN", "Local_RefNorm", "Local_MNorm") %in% norm_types)) {
     cat("\n[5] 执行局部标准化（按bioGroup分组）...\n")
     
     # 确保preprocessCore已加载
@@ -364,14 +552,129 @@ module04_standardization <- function(dir_config,
       cat(sprintf("  ✓ Local_QNorm完成，已保存: %s\n", csv_file))
     }
     
+    # 6.2b Local Quantile Normalization (NA安全版本) ####
+    if ("Local_QNorm_Fix" %in% norm_types) {
+      cat("\n  执行Local Quantile Normalization（QNorm_Fix，伪装NA后恢复）...\n")
+      
+      qnormalized_fix_mat <- data_matrix
+      
+      for (grp in unique(group_vec)) {
+        grp_cols <- names(group_vec[group_vec == grp])
+        cat(sprintf("    处理 %s (%d个样本)...\n", grp, length(grp_cols)))
+        
+        sub_mat <- data_matrix[, grp_cols, drop = FALSE]
+        normalized_sub_mat <- quantile_normalize_preserve_na(sub_mat)
+        colnames(normalized_sub_mat) <- grp_cols
+        
+        qnormalized_fix_mat[, grp_cols] <- normalized_sub_mat
+      }
+      
+      data_local_qnorm_fix <- data_log2
+      data_local_qnorm_fix[, data_cols] <- as.data.frame(qnormalized_fix_mat)
+      
+      standardized_data_list[["Local_QNorm_Fix"]] <- data_local_qnorm_fix
+      
+      csv_file <- file.path(dir_config$output, "Module04_Local_QNorm_Fix.csv")
+      write.csv(data_local_qnorm_fix, csv_file, row.names = FALSE)
+      cat(sprintf("  ✓ Local_QNorm_Fix完成，已保存: %s\n", csv_file))
+    }
+
+    # 6.2c Local Quantile Normalization (limma) ####
+    if ("Local_QNorm_Limma" %in% norm_types) {
+      cat("\n  执行Local Quantile Normalization（limma）...\n")
+      if (!require(limma, quietly = TRUE)) {
+        stop("❌ 需要安装limma包：BiocManager::install('limma')")
+      }
+      
+      qnormalized_limma_mat <- data_matrix
+      for (grp in unique(group_vec)) {
+        grp_cols <- names(group_vec[group_vec == grp])
+        cat(sprintf("    处理 %s (%d个样本)...\n", grp, length(grp_cols)))
+        sub_mat <- data_matrix[, grp_cols, drop = FALSE]
+        normalized_sub_mat <- limma::normalizeBetweenArrays(sub_mat, method = "quantile")
+        colnames(normalized_sub_mat) <- grp_cols
+        qnormalized_limma_mat[, grp_cols] <- normalized_sub_mat
+      }
+      
+      data_local_qnorm_limma <- data_log2
+      data_local_qnorm_limma[, data_cols] <- as.data.frame(qnormalized_limma_mat)
+      
+      standardized_data_list[["Local_QNorm_Limma"]] <- data_local_qnorm_limma
+      
+      csv_file <- file.path(dir_config$output, "Module04_Local_QNorm_Limma.csv")
+      write.csv(data_local_qnorm_limma, csv_file, row.names = FALSE)
+      cat(sprintf("  ✓ Local_QNorm_Limma完成，已保存: %s\n", csv_file))
+    }
+    
+    # 6.2d Local VSN ####
+    if ("Local_VSN" %in% norm_types) {
+      cat("\n  执行Local VSN...\n")
+      
+      vsn_mat <- data_matrix
+      for (grp in unique(group_vec)) {
+        grp_cols <- names(group_vec[group_vec == grp])
+        cat(sprintf("    处理 %s (%d个样本)...\n", grp, length(grp_cols)))
+        sub_mat <- as.matrix(data_annotated[, grp_cols, drop = FALSE])
+        normalized_sub_mat <- vsn_transform_preserve_na(sub_mat)
+        colnames(normalized_sub_mat) <- grp_cols
+        vsn_mat[, grp_cols] <- normalized_sub_mat
+      }
+      
+      data_local_vsn <- data_log2
+      data_local_vsn[, data_cols] <- as.data.frame(vsn_mat)
+      
+      standardized_data_list[["Local_VSN"]] <- data_local_vsn
+      
+      csv_file <- file.path(dir_config$output, "Module04_Local_VSN.csv")
+      write.csv(data_local_vsn, csv_file, row.names = FALSE)
+      cat(sprintf("  ✓ Local_VSN完成，已保存: %s\n", csv_file))
+    }
+    
+    # 6.2e Local Reference Normalization（上下文感知） ####
+    if ("Local_RefNorm" %in% norm_types) {
+      cat("\n  执行Local Reference Normalization（上下文感知）...\n")
+      
+      refnorm_mat <- data_matrix
+      sample_ctx_map <- setNames(sampleGroup$Context, sampleGroup$FinalName)
+      
+      for (grp in unique(group_vec)) {
+        grp_cols <- names(group_vec[group_vec == grp])
+        context_vec <- sample_ctx_map[grp_cols]
+        only_control <- all(context_vec == "Control", na.rm = TRUE) && any(!is.na(context_vec))
+        mode_label <- if (only_control) "Control模式（中位数就近）" else "Experiment优先"
+        cat(sprintf("    处理 %s (%d个样本, %s)...\n", grp, length(grp_cols), mode_label))
+        
+        sub_mat <- data_matrix[, grp_cols, drop = FALSE]
+        ref_col <- choose_reference_sample(grp_cols, sub_mat, sampleGroup, context_only_control = only_control)
+        if (is.null(ref_col)) {
+          warning(sprintf("⚠ 组 %s 未找到参考样本，跳过RefNorm", grp))
+          next
+        }
+        cat(sprintf("      参考样本: %s (Context=%s)\n", ref_col, sample_ctx_map[[ref_col]]))
+        
+        ref_vec <- sub_mat[, ref_col]
+        for (cn in grp_cols) {
+          refnorm_mat[, cn] <- align_to_reference(sub_mat[, cn], ref_vec)
+        }
+      }
+      
+      data_local_refnorm <- data_log2
+      data_local_refnorm[, data_cols] <- as.data.frame(refnorm_mat)
+      
+      standardized_data_list[["Local_RefNorm"]] <- data_local_refnorm
+      
+      csv_file <- file.path(dir_config$output, "Module04_Local_RefNorm.csv")
+      write.csv(data_local_refnorm, csv_file, row.names = FALSE)
+      cat(sprintf("  ✓ Local_RefNorm完成，已保存: %s\n", csv_file))
+    }
+    
     # 绘制局部标准化boxplot
     pdf_file <- file.path(dir_config$output, "Module04_Local_Norm_boxplot.pdf")
     pdf(pdf_file, width = 10, height = 5)
     
-    for (norm_name in c("Local_QNorm", "Local_MNorm")) {
+    for (norm_name in c("Local_QNorm", "Local_QNorm_Fix", "Local_QNorm_Limma", "Local_VSN", "Local_RefNorm", "Local_MNorm")) {
       if (norm_name %in% names(standardized_data_list)) {
         boxplot(standardized_data_list[[norm_name]][, data_cols], 
-                log = "y", 
                 cex.axis = 0.4, 
                 las = 2, 
                 main = norm_name,
@@ -400,7 +703,6 @@ module04_standardization <- function(dir_config,
   
   for (norm_name in names(standardized_data_list)) {
     boxplot(standardized_data_list[[norm_name]][, data_cols], 
-            log = "y", 
             cex.axis = 0.4, 
             las = 2, 
             main = norm_name,

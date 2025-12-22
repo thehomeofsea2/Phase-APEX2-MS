@@ -1,53 +1,53 @@
 # ============================================================================
 # Module 3: Annotation System
 # ============================================================================
-# Functions:
-#   1. Read HPA database, generate Cytosol/Nuclear/Nuclear_Cytosol annotations
-#   2. Read MitoCarta data, generate Mitochondrion annotation
-#   3. Read user-specified TP reference data (e.g., GO_SGs, HaloMap, etc.)
-#   4. Support additional nucleolus and custom TP reference files
-#   5. Add TP annotation columns based on preset modes or user configuration
-#   6. If no TP annotation configured, only keep basic annotations (Cytosol/Nuclear/Mitochondrion)
+# Features:
+#   1. Read HPA database to generate Cytosol/Nuclear/Nuclear_Cytosol annotations
+#   2. Read MitoCarta data to generate Mitochondrion annotations
+#   3. Read user-specified TP reference data (e.g., GO_SGs, HaloMap)
+#   4. Support extra nucleolus and custom TP reference files
+#   5. Add TP annotation columns based on preset mode or user config
+#   6. If no TP annotation configured, keep only basic annotations (Cytosol/Nuclear/Mitochondrion)
 #
 # Input: dir_config, data_raw, sampleGroup, custom_annotations, custom_tp_sources
 # Output: Module03_workspace.RData, Module03_data_annotated.csv
 # ============================================================================
 
 #' Read and process HPA data
-#'
+#' 
 #' @param dir_config Directory configuration
-#' @param mode Annotation mode ("SG" or "Nucleolus"), affects HPA filtering logic
-#' @return List containing Cytosol/Nuclear/Nuclear_Cytosol annotations
+#' @param mode Annotation mode ("SG" or "Nucleolus"), affects HPA filters
+#' @return List of Cytosol/Nuclear/Nuclear_Cytosol annotations
 load_HPA_annotations <- function(dir_config, mode = c("SG", "Nucleolus")) {
   mode <- match.arg(mode)
-
+  
   cat("\n----------------------------------------\n")
   cat("Step 1: Read HPA database\n")
   cat("----------------------------------------\n")
-
+  
   hpa_file <- file.path(dir_config$reference, "proteinatlas.tsv")
-
+  
   if (!file.exists(hpa_file)) {
     stop(sprintf("✗ Error: HPA file not found - %s", hpa_file))
   }
-
+  
   HPA_DATA <- read_tsv(hpa_file, show_col_types = FALSE)
-  cat(sprintf("✓ HPA data read: %d rows\n", nrow(HPA_DATA)))
-
-  # Select needed columns and filter Uncertain
-  HPA_DATA <- HPA_DATA %>%
+  cat(sprintf("✓ Loaded HPA data: %d rows\n", nrow(HPA_DATA)))
+  
+  # Select needed columns and filter out Uncertain
+  HPA_DATA <- HPA_DATA %>% 
     select(1:11,
            `Reliability (IF)`,
            `Subcellular location`,
            `Subcellular main location`,
-           `Subcellular additional location`) %>%
+           `Subcellular additional location`) %>% 
     filter(!`Reliability (IF)` == "Uncertain")
-
+  
   cat(sprintf("✓ After filtering: %d rows\n", nrow(HPA_DATA)))
   
   if (mode == "Nucleolus") {
     # ------------------------------------------------------------------------
-    # Nucleolus mode: Strictly follow 20250725.R definition
+    # Nucleolus mode: follow definitions from 20250725.R
     # ------------------------------------------------------------------------
     Cytosol_HPA_anno <- HPA_DATA %>% 
       filter(str_detect(`Subcellular main location`, "yto|crotubule|ctin|Intermediate")) %>% 
@@ -70,7 +70,7 @@ load_HPA_annotations <- function(dir_config, mode = c("SG", "Nucleolus")) {
     
   } else {
     # ------------------------------------------------------------------------
-    # SG mode: Keep original module03 default definition
+    # SG mode: keep default definitions from original module03
     # ------------------------------------------------------------------------
     Cytosol_HPA_anno <- HPA_DATA %>% 
       filter(str_detect(`Subcellular main location`, "yto|crotubule|ctin")) %>% 
@@ -91,27 +91,27 @@ load_HPA_annotations <- function(dir_config, mode = c("SG", "Nucleolus")) {
       filter(!str_detect(`Subcellular location`, "itochond"))
   }
   
-  cat(sprintf("✓ Cytosol annotation: %d proteins\n", nrow(Cytosol_HPA_anno)))
-  cat(sprintf("✓ Nuclear annotation: %d proteins\n", nrow(Nuclear_HPA_anno)))
-  cat(sprintf("✓ Nuclear_Cytosol annotation: %d proteins\n", nrow(Nuclear_Cytosol_HPA_anno)))
+  cat(sprintf("✓ Cytosol annotations: %d proteins\n", nrow(Cytosol_HPA_anno)))
+  cat(sprintf("✓ Nuclear annotations: %d proteins\n", nrow(Nuclear_HPA_anno)))
+  cat(sprintf("✓ Nuclear_Cytosol annotations: %d proteins\n", nrow(Nuclear_Cytosol_HPA_anno)))
   
   # --------------------------------------------------------------------------
-  # Generate Nucleolus annotations (main location + all locations)
+  # Build Nucleolus annotations (main location + all locations)
   # --------------------------------------------------------------------------
   Nucleolus_main_Anno <- HPA_DATA %>%
     filter(str_detect(`Subcellular main location`, "ucleol"))
-  cat(sprintf("✓ Nucleolus(main location) annotation: %d proteins\n", nrow(Nucleolus_main_Anno)))
+  cat(sprintf("✓ Nucleolus (main location) annotations: %d proteins\n", nrow(Nucleolus_main_Anno)))
   
   Nucleolus_Anno <- HPA_DATA %>%
     filter(str_detect(`Subcellular location`, "ucleol"))
-  cat(sprintf("✓ Nucleolus(all location) annotation: %d proteins\n", nrow(Nucleolus_Anno)))
+  cat(sprintf("✓ Nucleolus (all locations) annotations: %d proteins\n", nrow(Nucleolus_Anno)))
   
-  # Check intersections
+  # Check overlaps
   cyto_nuclear_intersect <- intersect(Cytosol_HPA_anno$Gene, Nuclear_HPA_anno$Gene)
   cyto_nc_intersect <- intersect(Cytosol_HPA_anno$Gene, Nuclear_Cytosol_HPA_anno$Gene)
   nuclear_nc_intersect <- intersect(Nuclear_HPA_anno$Gene, Nuclear_Cytosol_HPA_anno$Gene)
   
-  cat(sprintf("\nIntersection check:\n"))
+  cat(sprintf("\nIntersection checks:\n"))
   cat(sprintf("  Cytosol ∩ Nuclear: %d\n", length(cyto_nuclear_intersect)))
   cat(sprintf("  Cytosol ∩ Nuclear_Cytosol: %d\n", length(cyto_nc_intersect)))
   cat(sprintf("  Nuclear ∩ Nuclear_Cytosol: %d\n", length(nuclear_nc_intersect)))
@@ -127,34 +127,34 @@ load_HPA_annotations <- function(dir_config, mode = c("SG", "Nucleolus")) {
 
 
 #' Read MitoCarta data
-#'
+#' 
 #' @param dir_config Directory configuration
 #' @return MitoCarta annotation data frame
 load_MitoCarta_annotations <- function(dir_config) {
-
+  
   cat("\n----------------------------------------\n")
   cat("Step 2: Read MitoCarta data\n")
   cat("----------------------------------------\n")
-
+  
   mito_file <- file.path(dir_config$reference, "MitoCarta3.0.csv")
-
+  
   if (!file.exists(mito_file)) {
     stop(sprintf("✗ Error: MitoCarta file not found - %s", mito_file))
   }
-
+  
   MitoCarta_anno <- read.csv(mito_file, stringsAsFactors = FALSE)
-  cat(sprintf("✓ MitoCarta data read: %d proteins\n", nrow(MitoCarta_anno)))
-
+  cat(sprintf("✓ Loaded MitoCarta data: %d proteins\n", nrow(MitoCarta_anno)))
+  
   return(MitoCarta_anno)
 }
 
 
 #' Read SGs reference data
-#'
+#' 
 #' @param dir_config Directory configuration
-#' @return List containing various SGs references
+#' @return List containing SGs references
 load_SGs_references <- function(dir_config) {
-
+  
   cat("\n----------------------------------------\n")
   cat("Step 3: Read SGs reference data\n")
   cat("----------------------------------------\n")
@@ -192,14 +192,14 @@ load_SGs_references <- function(dir_config) {
 }
 
 
-#' Read nucleolus reference data (CLL etc.)
+#' Read nucleolus reference data (CLL, etc.)
 #'
 #' @param dir_config Directory configuration
-#' @return List containing nucleolus-related references
+#' @return List of nucleolus-related references
 load_nucleolus_references <- function(dir_config) {
-
+  
   cat("\n----------------------------------------\n")
-  cat("Additional reference: Read nucleolus annotations (CLL etc.)\n")
+  cat("Additional references: read nucleolus annotations (CLL, etc.)\n")
   cat("----------------------------------------\n")
   
   candidate_files <- c("CLL_Nucleolus_subNucleolus.csv", "CLL_Nucleolus.csv")
@@ -215,7 +215,7 @@ load_nucleolus_references <- function(dir_config) {
   }
   
   if (is.null(cll_file)) {
-    warning("⚠ CLL nucleolus reference file not found (CLL_Nucleolus*.csv), will skip CLL_Localization annotation")
+    warning("⚠ CLL nucleolus reference not found (CLL_Nucleolus*.csv); skipping CLL_Localization annotation")
     return(nucleolus_refs)
   }
   
@@ -237,17 +237,17 @@ load_nucleolus_references <- function(dir_config) {
 
 #' Read custom TP reference files
 #'
-#' @param custom_tp_sources List, each element contains source_name, file, file_type, gene_column
+#' @param custom_tp_sources List with elements source_name, file, file_type, gene_column
 #' @param dir_config Directory configuration
 #' @return Named list (source_name -> data frame)
 load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
-
+  
   if (is.null(custom_tp_sources) || length(custom_tp_sources) == 0) {
     return(list())
   }
-
+  
   cat("\n----------------------------------------\n")
-  cat("Additional reference: Read custom TP files\n")
+  cat("Additional references: read custom TP files\n")
   cat("----------------------------------------\n")
   
   custom_refs <- list()
@@ -256,7 +256,7 @@ load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
     cfg <- custom_tp_sources[[i]]
     
     if (is.null(cfg$source_name) || cfg$source_name == "") {
-      stop(sprintf("✗ Error: %dth custom TP missing source_name", i))
+      stop(sprintf("✗ Error: custom TP #%d missing source_name", i))
     }
     if (is.null(cfg$file) || cfg$file == "") {
       stop(sprintf("✗ Error: custom TP %s missing file path", cfg$source_name))
@@ -273,7 +273,7 @@ load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
     }
     
     if (!file.exists(file_path)) {
-      stop(sprintf("✗ Error: custom TP %s file does not exist - %s", source_name, cfg$file))
+      stop(sprintf("✗ Error: file for custom TP %s does not exist - %s", source_name, cfg$file))
     }
     
     file_type <- cfg$file_type
@@ -322,7 +322,7 @@ load_custom_tp_sources <- function(custom_tp_sources, dir_config) {
 #' Built-in annotation configurations
 #'
 #' @param mode Mode: SG or Nucleolus
-#' @return List of annotation configurations
+#' @return Annotation config list
 get_preset_annotation_configs <- function(mode = c("SG", "Nucleolus")) {
   mode <- match.arg(mode)
   
@@ -377,11 +377,11 @@ get_preset_annotation_configs <- function(mode = c("SG", "Nucleolus")) {
 
 
 #' Build TP lookup table
-#'
+#' 
 #' @param SGs_refs SGs reference list
-#' @param HPA_anno HPA annotation
-#' @param nucleolus_refs Nucleolus reference
-#' @return Name to data frame mapping
+#' @param HPA_anno HPA annotations
+#' @param nucleolus_refs Nucleolus references
+#' @return Mapping from name to data frame
 build_tp_lookup <- function(SGs_refs, HPA_anno, nucleolus_refs, custom_tp_refs = list()) {
   tp_lookup <- list()
   
@@ -417,16 +417,15 @@ build_tp_lookup <- function(SGs_refs, HPA_anno, nucleolus_refs, custom_tp_refs =
 
 
 #' Annotate data
-#'
-#' @param data Data to be annotated
+#' 
+#' @param data Data to annotate
 #' @param HPA_anno HPA annotation list
-#' @param MitoCarta_anno MitoCarta annotation
-#' @param SGs_refs SGs reference list
-#' @param annotation_configs Annotation configuration list, each element format:
-#'   list(column_name = "annotation column name", TP_source = "TP data source", TP_column = "TP column name", TP_label = "TP label")
+#' @param MitoCarta_anno MitoCarta annotations
+#' @param SGs_refs SGs references
+#' @param annotation_configs Annotation configs: list(column_name, TP_source, TP_column, TP_label)
 #' @return Annotated data
 annotate_data <- function(data, HPA_anno, MitoCarta_anno, annotation_configs, tp_lookup = list()) {
-
+  
   cat("\n----------------------------------------\n")
   cat("Step 4: Data annotation\n")
   cat("----------------------------------------\n")
@@ -436,11 +435,11 @@ annotate_data <- function(data, HPA_anno, MitoCarta_anno, annotation_configs, tp
   get_tp_genes <- function(tp_source, tp_column) {
     tp_data <- tp_lookup[[tp_source]]
     if (is.null(tp_data)) {
-      warning(sprintf("⚠ TP source not found: %s, column will only contain basic localization", tp_source))
+      warning(sprintf("⚠ TP source not found: %s; column will keep only basic localization", tp_source))
       return(character(0))
     }
     if (!(tp_column %in% colnames(tp_data))) {
-      warning(sprintf("⚠ TP source %s missing column %s, column will only contain basic localization", tp_source, tp_column))
+      warning(sprintf("⚠ TP source %s missing column %s; column will keep only basic localization", tp_source, tp_column))
       return(character(0))
     }
     genes <- tp_data[[tp_column]]
@@ -454,12 +453,12 @@ annotate_data <- function(data, HPA_anno, MitoCarta_anno, annotation_configs, tp
     tp_column <- config$TP_column
     tp_label <- config$TP_label
     
-    cat(sprintf("\nAdding annotation column: %s\n", col_name))
+    cat(sprintf("\nAdd annotation column: %s\n", col_name))
     cat(sprintf("  TP source: %s$%s\n", tp_source, tp_column))
-
+    
     tp_genes <- get_tp_genes(tp_source, tp_column)
-
-    # Perform annotation (priority: TP > Nuclear/Cytosol/Nuclear_Cytosol > Mitochondrion > Other)
+    
+    # Annotate (priority: TP > Nuclear/Cytosol/Nuclear_Cytosol > Mitochondrion > Other)
     data_annotated <- data_annotated %>%
       mutate(!!col_name := case_when(
         Gene %in% tp_genes ~ tp_label,
@@ -470,28 +469,28 @@ annotate_data <- function(data, HPA_anno, MitoCarta_anno, annotation_configs, tp
         TRUE ~ "Other"
       ))
     
-    # Statistics
+    # Counts
     anno_counts <- table(data_annotated[[col_name]])
-    cat(sprintf("  Annotation statistics:\n"))
+    cat(sprintf("  Annotation counts:\n"))
     for (label in names(anno_counts)) {
       cat(sprintf("    %s: %d\n", label, anno_counts[label]))
     }
   }
-
-  cat("\n✓ Data annotation completed\n")
+  
+  cat("\n✓ Data annotation complete\n")
   return(data_annotated)
 }
 
 
 #' Module 3 main function
-#'
+#' 
 #' @param dir_config Directory configuration
 #' @param data_raw Raw data
-#' @param sampleGroup Group information (optional, for subsequent analysis)
-#' @param custom_annotations User-defined annotation configuration (optional, overrides presets when not empty)
+#' @param sampleGroup Group info (optional, for downstream analysis)
+#' @param custom_annotations Custom annotation configs (optional, overrides presets)
 #' @param annotation_mode Preset annotation mode ("SG" or "Nucleolus")
-#' @param custom_tp_sources Custom TP reference file configuration (optional)
-#' @param additional_annotations Additional annotation configurations (added on top of preset/custom)
+#' @param custom_tp_sources Custom TP reference configs (optional)
+#' @param additional_annotations Extra annotation configs (appended to preset/custom)
 module03_annotation <- function(dir_config,
                                 data_raw,
                                 sampleGroup = NULL,
@@ -515,25 +514,25 @@ module03_annotation <- function(dir_config,
   custom_tp_refs <- load_custom_tp_sources(custom_tp_sources, dir_config)
   
   # --------------------------------------------------------------------------
-  # Annotation mode and configuration
+  # Annotation mode and configs
   # --------------------------------------------------------------------------
   use_custom <- !is.null(custom_annotations) && length(custom_annotations) > 0
   if (use_custom) {
     annotation_configs <- custom_annotations
-    cat(sprintf("✓ Using custom annotation configuration (%d columns)\n", length(annotation_configs)))
+    cat(sprintf("✓ Using custom annotation configs (%d columns)\n", length(annotation_configs)))
   } else {
     annotation_configs <- get_preset_annotation_configs(annotation_mode)
     if (length(annotation_configs) == 0) {
-      cat("⚠ No TP annotation configured, will only use basic annotations (Cytosol/Nuclear/Mitochondrion)\n")
+      cat("⚠ No TP annotations configured; only basic annotations (Cytosol/Nuclear/Mitochondrion) will be used\n")
     } else {
-      cat(sprintf("✓ Preset annotation configuration loaded (mode: %s, columns: %d)\n",
+      cat(sprintf("✓ Loaded preset annotation configs (mode: %s, columns: %d)\n",
                   annotation_mode, length(annotation_configs)))
     }
   }
-
+  
   has_additional <- !is.null(additional_annotations) && length(additional_annotations) > 0
   if (has_additional) {
-    cat(sprintf("✓ Adding custom annotation columns (%d columns)\n", length(additional_annotations)))
+    cat(sprintf("✓ Appended custom annotation columns (%d columns)\n", length(additional_annotations)))
     annotation_configs <- c(annotation_configs, additional_annotations)
   }
   
@@ -549,14 +548,14 @@ module03_annotation <- function(dir_config,
   tp_lookup <- build_tp_lookup(SGs_refs, HPA_anno, nucleolus_refs, custom_tp_refs)
   
   # --------------------------------------------------------------------------
-  # User-defined annotation configuration (all TP annotation columns need manual configuration)
+  # User custom annotation config (all TP columns must be configured manually)
   # --------------------------------------------------------------------------
   if (length(annotation_configs) == 0) {
-    cat("  - No annotation configuration provided, result will keep original columns\n")
+    cat("  - No annotation configs provided; output will keep original columns\n")
   }
 
   # --------------------------------------------------------------------------
-  # Execute annotation
+  # Run annotation
   # --------------------------------------------------------------------------
   data_annotated <- annotate_data(
     data_raw,
@@ -572,10 +571,10 @@ module03_annotation <- function(dir_config,
   cat("\n----------------------------------------\n")
   cat("Step 5: Save data\n")
   cat("----------------------------------------\n")
-
+  
   setwd(dir_config$root)
-
-  # Save reference data (for subsequent modules)
+  
+  # Save reference data for later modules
   annotation_references <- list(
     HPA_anno = HPA_anno,
     MitoCarta_anno = MitoCarta_anno,
@@ -591,8 +590,8 @@ module03_annotation <- function(dir_config,
   output_file <- file.path(dir_config$output, "Module03_data_annotated.csv")
   write.csv(data_annotated, output_file, row.names = FALSE)
   cat(sprintf("✓ Saved: %s (Output directory)\n", output_file))
-
-  cat("\n✓ Module 3 data processing completed, returning data to main program\n")
+  
+  cat("\n✓ Module 3 processing complete; returning data to main pipeline\n")
   
   return(list(
     data_annotated = data_annotated,

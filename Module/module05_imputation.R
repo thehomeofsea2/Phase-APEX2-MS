@@ -1,33 +1,32 @@
 # Module 05: Missing Value Imputation
-# Function: Impute missing values in standardized data (mainly for NoCat groups)
+# Purpose: Impute missing values for standardized data (mainly for NoCat group)
 # Author: CodeNorm Pipeline
 # Date: 2024
 
 #' Module 05: Missing Value Imputation
 #' 
 #' @description
-#' Impute missing values in standardized data using Perseus method
-#' Mainly targets groups with CatalyticGroup as NoCat, Cat groups can optionally be imputed
+#' Impute missing values on standardized data using the Perseus approach.
+#' Primarily targets groups with CatalyticGroup = NoCat; Cat groups can optionally be imputed.
 #' 
 #' @param dir_config Directory configuration list (from Module 1)
 #' @param standardized_data_list Standardized data list (from Module 4)
 #' @param sampleGroup Sample grouping information (from Module 2)
-#' @param impute_cat_mean Whether to impute Cat groups with n_valid=2 using mean (default FALSE)
+#' @param impute_cat_mean Whether to impute Cat groups with mean when n_valid = 2 (default FALSE)
 #' @param random_seed Random seed for reproducibility (default 123)
 #' 
 #' @return List containing:
-#'   - imputed_data_list: List containing all imputed versions
-#'   - imputation_params: Imputation parameter information
+#'   - imputed_data_list: all imputed versions
+#'   - imputation_params: imputation parameter info
 #' 
 #' @details
 #' Imputation strategy:
-#' 1. Perseus parameter calculation: imputation_mean = col_mean - 1.8 * col_sd
-#'                                   imputation_sd = 0.3 * col_sd
-#' 2. NoCat group imputation rules:
-#'    - n_valid == 2: Impute with group mean
-#'    - n_valid < 2: Impute with random sampling using Perseus parameters
-#' 3. Cat groups: Not imputed by default, user can choose to impute with mean when n_valid==2
-#' 4. Output comparison boxplot before and after imputation
+#' 1. Perseus parameters: imputation_mean = col_mean - 1.8 * col_sd; imputation_sd = 0.3 * col_sd
+#' 2. NoCat rules:
+#'    - n_valid == 2: impute with group mean
+#'    - n_valid < 2: sample from Perseus parameters
+#' 3. Cat group: no imputation by default; optional mean imputation when n_valid == 2
+#' 4. Output before/after comparison boxplot
 #' 
 #' @export
 module05_imputation <- function(dir_config, 
@@ -45,11 +44,11 @@ module05_imputation <- function(dir_config,
   cat("Module 05: Missing Value Imputation\n")
   cat(rep("=", 60), "\n\n", sep = "")
   
-  # 1. Input validation ####
-  cat("\n[1] Validating input data...\n")
+  # 1. Validate input ####
+  cat("\n[1] Validate input data...\n")
   
   if (!all(c("reference", "output") %in% names(dir_config))) {
-    stop("❌ dir_config must contain reference and output paths")
+    stop("❌ dir_config must include reference and output paths")
   }
   
   if (!is.list(standardized_data_list) || length(standardized_data_list) == 0) {
@@ -58,18 +57,18 @@ module05_imputation <- function(dir_config,
   
   required_cols <- c("FinalName", "bioGroup", "CatalyticGroup")
   if (!all(required_cols %in% names(sampleGroup))) {
-    stop("❌ sampleGroup must contain: ", paste(required_cols, collapse = ", "))
+    stop("❌ sampleGroup must include: ", paste(required_cols, collapse = ", "))
   }
   
   cat("✓ Input validation passed\n")
   cat(sprintf("  - Datasets to process: %d\n", length(standardized_data_list)))
-  cat(sprintf("  - Cat group imputation strategy: %s\n", ifelse(impute_cat_mean, "Impute when n_valid=2", "No imputation")))
+  cat(sprintf("  - Cat-group strategy: %s\n", ifelse(impute_cat_mean, "impute when n_valid=2", "no imputation")))
   cat(sprintf("  - Random seed: %d\n", random_seed))
   
-  # 2. Prepare grouping information ####
-  cat("\n[2] Preparing grouping information...\n")
+  # 2. Prepare grouping info ####
+  cat("\n[2] Prepare grouping info...\n")
   
-  # Identify data columns and annotation columns from the first dataset
+  # Identify data and annotation columns from first dataset
   first_data <- standardized_data_list[[1]]
   data_cols <- sampleGroup$FinalName
   anno_cols <- setdiff(names(first_data), c("Gene", data_cols))
@@ -98,11 +97,11 @@ module05_imputation <- function(dir_config,
               paste(nocat_groups, collapse = ", ")))
   
   # 3. Define imputation function ####
-  impute_missing_values <- function(data, data_name, nocat_groups, impute_cat) {
+  impute_missing_values <- function(data, data_name, nocat_groups, cat_groups, impute_cat) {
     
     cat(sprintf("\n  Processing: %s\n", data_name))
     
-    # Calculate imputation parameters for each column (Perseus method)
+    # Calculate imputation parameters (Perseus)
     cat("    - Calculating Perseus imputation parameters...\n")
     
     perseus_params <- data %>%
@@ -120,13 +119,13 @@ module05_imputation <- function(dir_config,
         imputation_sd = 0.3 * col_sd
       )
     
-    # Match bioGroup for each sample
+    # Map samples to bioGroup
     sample_to_group <- setNames(sampleGroup$bioGroup, sampleGroup$FinalName)
     
-    # Execute imputation
-    cat("    - Executing missing value imputation...\n")
+    # Impute values
+    cat("    - Performing imputation...\n")
     
-    # Set random seed for reproducibility
+    # Set seed for reproducibility
     set.seed(random_seed)
     
     data_imputed <- data %>%
@@ -147,12 +146,12 @@ module05_imputation <- function(dir_config,
       rowwise() %>%
       mutate(
         intensity_imputed = case_when(
-          # NoCat groups: n_valid=2 use mean, <2 use Perseus
+          # NoCat: n_valid=2 use mean; <2 use Perseus sampling
           group %in% nocat_groups & n_valid == 2 & is.na(intensity) ~ mean_valid_within_group,
           group %in% nocat_groups & n_valid < 2 & is.na(intensity) ~ rnorm(1, mean = imputation_mean, sd = imputation_sd),
-          # Cat groups: according to user choice
-          impute_cat & !(group %in% nocat_groups) & n_valid == 2 & is.na(intensity) ~ mean_valid_within_group,
-          # Other cases keep original value
+          # Cat: optional mean imputation when n_valid=2
+          impute_cat & group %in% cat_groups & n_valid == 2 & is.na(intensity) ~ mean_valid_within_group,
+          # Otherwise keep original
           TRUE ~ intensity
         )
       ) %>%
@@ -165,15 +164,15 @@ module05_imputation <- function(dir_config,
       ) %>%
       select(Gene, all_of(data_cols), all_of(anno_cols))
     
-    # Statistics on imputation
+    # Imputation stats
     n_imputed <- sum(is.na(data[, data_cols])) - sum(is.na(data_imputed[, data_cols]))
     cat(sprintf("    ✓ Imputed %d missing values\n", n_imputed))
     
     return(data_imputed)
   }
   
-  # 4. Execute imputation for all datasets ####
-  cat("\n[3] Executing missing value imputation...\n")
+  # 4. Impute across all datasets ####
+  cat("\n[3] Run imputation...\n")
   
   imputed_data_list <- list()
   
@@ -181,8 +180,8 @@ module05_imputation <- function(dir_config,
     data_name <- names(standardized_data_list)[i]
     data <- standardized_data_list[[i]]
     
-    # Execute imputation
-    data_imputed <- impute_missing_values(data, data_name, nocat_groups, impute_cat_mean)
+    # Perform imputation
+    data_imputed <- impute_missing_values(data, data_name, nocat_groups, cat_groups, impute_cat_mean)
     
     # Save to list
     imputed_name <- paste0(data_name, "_Imputed")
@@ -194,12 +193,12 @@ module05_imputation <- function(dir_config,
     cat(sprintf("    ✓ Saved: %s\n", basename(csv_file)))
   }
   
-  cat(sprintf("\n✓ Processed %d datasets in total\n", length(imputed_data_list)))
+  cat(sprintf("\n✓ Processed %d datasets\n", length(imputed_data_list)))
   
-  # 5. Generate comparison boxplot ####
-  cat("\n[4] Generating comparison boxplot before and after imputation...\n")
+  # 5. Generate comparison boxplots ####
+  cat("\n[4] Generate before/after boxplots...\n")
   
-  # Assign colors to different bioGroups (consistent with Module 4)
+  # Assign colors per bioGroup (aligned with Module 4)
   sample_to_group <- setNames(sampleGroup$bioGroup, sampleGroup$FinalName)
   col_groups <- sample_to_group[data_cols]
   unique_groups <- unique(col_groups)
@@ -224,12 +223,11 @@ module05_imputation <- function(dir_config,
     original_data <- standardized_data_list[[i]]
     imputed_data <- imputed_data_list[[i]]
     
-    # Set dual plot layout
+    # Two-panel layout
     par(mfrow = c(1, 2))
     
     # Before imputation
     boxplot(original_data[, data_cols], 
-            log = "y", 
             cex.axis = 0.4, 
             las = 2, 
             main = paste0(original_name, "\n(Before Imputation)"),
@@ -238,7 +236,6 @@ module05_imputation <- function(dir_config,
     
     # After imputation
     boxplot(imputed_data[, data_cols], 
-            log = "y", 
             cex.axis = 0.4, 
             las = 2, 
             main = paste0(imputed_name, "\n(After Imputation)"),
@@ -251,8 +248,8 @@ module05_imputation <- function(dir_config,
   dev.off()
   cat(sprintf("✓ Saved: %s\n", basename(pdf_file)))
   
-  # 6. Validate annotation column integrity ####
-  cat("\n[5] Validating annotation column integrity...\n")
+  # 6. Validate annotation columns ####
+  cat("\n[5] Validate annotation columns...\n")
   
   for (i in seq_along(imputed_data_list)) {
     original_data <- standardized_data_list[[i]]
@@ -260,16 +257,16 @@ module05_imputation <- function(dir_config,
     
     for (anno_col in anno_cols) {
       if (!all(original_data[[anno_col]] == imputed_data[[anno_col]], na.rm = TRUE)) {
-        warning(sprintf("⚠ Column %s in %s may have changed", 
-                       anno_col, names(imputed_data_list)[i]))
+        warning(sprintf("⚠ Column %s may have changed in %s", 
+                       names(imputed_data_list)[i], anno_col))
       }
     }
   }
   
-  cat("✓ Annotation column integrity validation passed\n")
+  cat("✓ Annotation columns validated\n")
   
-  # 7. Generate imputation parameter summary ####
-  cat("\n[6] Generating imputation parameter summary...\n")
+  # 7. Summarize imputation parameters ####
+  cat("\n[6] Summarize imputation parameters...\n")
   
   imputation_params <- list(
     nocat_groups = nocat_groups,
@@ -280,9 +277,9 @@ module05_imputation <- function(dir_config,
     anno_cols = anno_cols
   )
   
-  # 8. Return results ####
+  # 8. Return result ####
   cat("\n" , rep("=", 60), "\n", sep = "")
-  cat("Module 05 completed\n")
+  cat("Module 05 complete\n")
   cat(rep("=", 60), "\n", sep = "")
   cat("\nGenerated datasets:\n")
   for (name in names(imputed_data_list)) {
